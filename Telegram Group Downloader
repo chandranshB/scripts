@@ -1,0 +1,42 @@
+import os
+import sys
+import asyncio
+from telethon import TelegramClient
+from telethon.errors import RPCError
+
+API_ID   = int(os.getenv("TG_API_ID", 0))
+API_HASH = os.getenv("TG_API_HASH", "")
+TARGET   = int(os.getenv("TG_TARGET_ID", 0))
+OUT_DIR  = "telegram_group_media"
+
+async def main():
+    if not (API_ID and API_HASH and TARGET):
+        print("❌ Please set TG_API_ID, TG_API_HASH and TG_TARGET_ID")
+        sys.exit(1)
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    count = 0
+
+    async with TelegramClient("session", API_ID, API_HASH) as client:
+        async for msg in client.iter_messages(TARGET):
+            if not msg.media:
+                continue
+
+            try:
+                date_folder = msg.date.strftime("%Y-%m-%d")
+                folder = os.path.join(OUT_DIR, date_folder)
+                os.makedirs(folder, exist_ok=True)
+
+                saved = await msg.download_media(file=folder)
+                count += 1
+                print(f"[{count:03d}] {saved}")
+
+            except RPCError as e:
+                print(f"[RPCError @{msg.id}] {e.message}")
+            except Exception as e:
+                print(f"[Error @{msg.id}] {e}")
+
+    print(f"\n✅ Finished: {count} files saved to `{OUT_DIR}/`")
+
+if __name__ == "__main__":
+    asyncio.run(main())
