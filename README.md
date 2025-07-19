@@ -1,270 +1,130 @@
-# 📦 My Scripts
+# My Scripts 📦
 
-A collection of simple, self-contained scripts to streamline common tasks.
+Welcome\! This is a collection of simple scripts designed to help you with common tasks, even if you're not a programmer.
 
----
+-----
 
-## 🛠️ Scripts Included
+## What You'll Find Here
 
-### 1. repo‑clone.bat
+  * **For Windows Users:**
+      * `repo-clone.bat`: A tool to copy everything from one code repository to another.
+  * **For Linux Users:**
+      * `mega-tor-downloader.sh`: A script to download files from MEGA.nz anonymously without download limits.
+  * **For All Users (Windows, macOS, Linux):**
+      * `Telegram Group Downloader.py`: A program to download all media from a Telegram group or channel.
+      * `advaita.py`: A tool to find and remove duplicate files on your computer.
 
-Mirrors changes from one Git repo (source) to another (destination).
+-----
 
-**Features**
+## Getting Started: What You Need
 
-* Clones source & dest into temp folders
-* Copies all files (ignoring `.git`)
-* Stages, commits, and pushes diffs
-* Cleans up temp directories
+Before you begin, make sure you have the right tools for the job.
 
-**Supported OS:** Windows (Tested on Windows 10/11)
+  * **For the Python Scripts (`.py` files):**
+      * You'll need **Python** installed. If you don't have it, you can get it from the [official Python website](https://www.python.org/downloads/).
+  * **For the Windows Script (`.bat` file):**
+      * You'll need **Git for Windows**. You can download it from [git-scm.com](https://git-scm.com/download/win).
+  * **For the Linux Script (`.sh` file):**
+      * You will need to install a few tools using your system's package manager. The script will guide you through this.
 
-**Prerequisites:**
-* [Git for Windows](https://git-scm.com/download/win) (must be in your PATH)
-* Command Prompt or compatible terminal
+-----
 
-**Setup:**
-No special setup required. Ensure you have write permissions in the working directory.
+## The Scripts Explained
 
-**Usage:**
-1. Double-click `repo-clone.bat` or run it in Command Prompt:
-   ```batch
-   repo-clone.bat
-   ```
-2. Follow the prompts for:
-   - Source repository URL
-   - Destination repository URL
-   - Commit message
+Here’s a simple guide for each script.
 
----
+### 📜 `repo-clone.bat` (For Windows)
 
-### 2. download\_media.py
+This script helps you mirror one Git repository to another. Think of it as a "copy-paste" for code repositories.
 
-Downloads **all** media from a Telegram group/channel, organizing by type (images, videos, audio, documents, etc.).
+**How to Use It:**
 
-**Supported OS:** Windows, Linux, macOS (Tested on Python 3.8+)
+1.  **Download:** Save the `repo-clone.bat` file to your computer.
+2.  **Run It:** Double-click the file to open a command prompt window.
+3.  **Follow the Prompts:**
+      * It will ask for the **source repository URL** (where you're copying from).
+      * Then, it will ask for the **destination repository URL** (where you're pasting to).
+      * Finally, type a **commit message** (a short note about what you're copying).
 
-**Prerequisites:**
-* Python 3.8 or newer
-* [Telethon](https://github.com/LonamiWebs/Telethon) and [python-dotenv](https://pypi.org/project/python-dotenv/)
-* Telegram API credentials ([get them here](https://my.telegram.org))
+The script will handle all the technical steps for you and will clean up after itself when it's done.
 
-**Setup:**
-1. Install dependencies:
-   ```bash
-   pip install telethon python-dotenv
-   ```
-2. Create a `.env` file in the same directory with:
-   ```env
-   API_ID=your_api_id
-   API_HASH=your_api_hash
-   ```
-   Or export these as environment variables.
+### 📥 `Telegram Group Downloader.py` (For Windows, macOS, and Linux)
 
-**Usage:**
+This script lets you download all the photos, videos, and other files from a Telegram group or channel.
+
+**Before You Start:**
+
+  * **Get Your Telegram API Credentials:** You'll need an **API ID** and **API Hash** from Telegram. You can get these by following the instructions at [my.telegram.org](https://my.telegram.org).
+  * **Install Required Packages:** Open your terminal (Command Prompt on Windows, Terminal on macOS/Linux) and type the following command:
+    ```bash
+    pip install telethon python-dotenv
+    ```
+  * **Create a `.env` File:** In the same folder where you saved the script, create a new file named `.env`. Inside this file, add your API credentials like this:
+    ```
+    API_ID=your_api_id
+    API_HASH=your_api_hash
+    ```
+    Replace `your_api_id` and `your_api_hash` with the credentials you got from Telegram.
+
+**How to Use It:**
+
+1.  **Run the Script:** Open your terminal, navigate to the folder where you saved the files, and run the script with this command:
+    ```bash
+    python "Telegram Group Downloader.py"
+    ```
+2.  **Follow the Prompts:**
+      * Enter the **link to the Telegram group or channel**.
+      * Choose how many **downloads you want to run at the same time** (a number between 1 and 10 is good).
+
+The script will create a new folder and save all the media files there, neatly organized by type (images, videos, etc.).
+
+### 🕵️ `mega-tor-downloader.sh` (For Linux)
+
+This script downloads files from MEGA.nz public folders through the Tor network, which helps protect your privacy and avoid download limits.
+
+**Before You Start:**
+
+  * **Install Required Tools:** Open your terminal and run this command to install the necessary software:
+    ```bash
+    sudo apt update && sudo apt install megatools torsocks tor
+    ```
+
+**How to Use It:**
+
+1.  **Run the Script:** Open your terminal and run the script with this command:
+    ```bash
+    bash mega-tor-downloader.sh
+    ```
+2.  **Interactive Mode:** The script will ask you for:
+      * The **MEGA folder URL**.
+      * The **destination directory** where you want to save the files.
+
+You can also run the script with options like this:
+
 ```bash
-python3 "Telegram Group Downloader.py"
-```
-Follow the prompts to enter your group/channel link and set parallel download count.
-### 3. mega-tor-downloader.sh
-
-Download files from MEGA public folders using Tor for privacy and to bypass rate limits.
-
-**Supported OS:** Linux (Tested on Ubuntu/Debian)
-
-**Prerequisites:**
-* `megadl` (from [megatools](https://megatools.megous.com/))
-* `torsocks` and `tor` (install via your package manager)
-* `sudo` privileges to manage Tor service
-
-**Setup:**
-1. Install required tools:
-   ```bash
-   sudo apt update
-   sudo apt install megatools torsocks tor
-   ```
-2. Ensure your user can run `sudo systemctl start tor` without password (optional, for smoother automation)
-
-**Usage:**
-```bash
-bash mega-tor-downloader.sh
-```
-You can provide options via flags or interactively:
-* `-u` MEGA folder URL
-* `-d` Destination directory (can be used multiple times)
-* `-r` Max retries (default: 10)
-* `-w` Wait time between retries (default: 10s)
-
----
-
-## ⚙️ Prerequisites
-
-* **Windows/macOS/Linux** with Git & Python installed
-* **Telethon** for the Python script
-* Valid **Telegram API** credentials (`API_ID`, `API_HASH`)
-
----
-
-## 📂 Repository Layout
-
-```
-/ (root)
-├─ repo-clone.bat
-├─ Telegram Group Downloader.py
-├─ mega-tor-downloader.sh
-├─ README.md
-└─ .gitignore
+bash mega-tor-downloader.sh -u <MEGA_URL> -d <DEST_DIR>
 ```
 
-**.gitignore** should include:
-```
-session.session
-telegram_group_media/
-mega-tor-logs/
-*.log
-```
+If a download fails, the script will automatically try again a few times. All download activity is logged for troubleshooting.
 
----
+### ✨ `advaita.py` (For Windows, macOS, and Linux)
 
-## 🚑 Troubleshooting
+This script scans a folder, finds all the duplicate files, and helps you clean them up to free up space.
 
-* **repo-clone.bat**: Ensure `git` is in your PATH and run in a writable directory.
-* **Telegram Group Downloader.py**: Verify your `.env` or environment variables are set and your Telegram account has access to the group/channel.
-* **mega-tor-downloader.sh**: Make sure all dependencies are installed and you have sudo privileges. Check logs in `~/Downloads/mega-tor-logs/` if downloads fail.
+**How to Use It:**
 
----
-# 📦 My Scripts
+1.  **Run the Script:** Open your terminal and run the script. You can either scan the current directory or specify a path:
+      * To scan the current folder:
+        ```bash
+        python advaita.py
+        ```
+      * To scan a different folder:
+        ```bash
+        python advaita.py /path/to/your/folder
+        ```
+2.  **Choose What to Do:** After scanning, the script will show you a summary of the duplicates it found and give you three choices:
+      * **Delete** all the duplicate files.
+      * **Move** all the duplicates to a new "duplicates" folder.
+      * **Skip** and do nothing.
 
-A collection of simple, self-contained scripts to streamline common tasks.
-
----
-
-## 🛠️ Scripts Included
-
-### 1. repo‑clone.bat
-
-Mirrors changes from one Git repo (source) to another (destination).
-
-**Features**
-
-* Clones source & dest into temp folders
-* Copies all files (ignoring `.git`)
-* Stages, commits, and pushes diffs
-* Cleans up temp directories
-
-**Supported OS:** Windows (Tested on Windows 10/11)
-
-**Prerequisites:**
-* [Git for Windows](https://git-scm.com/download/win) (must be in your PATH)
-* Command Prompt or compatible terminal
-
-**Setup:**
-No special setup required. Ensure you have write permissions in the working directory.
-
-**Usage:**
-1. Double-click `repo-clone.bat` or run it in Command Prompt:
-   ```batch
-   repo-clone.bat
-   ```
-2. Follow the prompts for:
-   - Source repository URL
-   - Destination repository URL
-   - Commit message
-
----
-
-### 2. download\_media.py
-
-Downloads **all** media from a Telegram group/channel, organizing by type (images, videos, audio, documents, etc.).
-
-**Supported OS:** Windows, Linux, macOS (Tested on Python 3.8+)
-
-**Prerequisites:**
-* Python 3.8 or newer
-* [Telethon](https://github.com/LonamiWebs/Telethon) and [python-dotenv](https://pypi.org/project/python-dotenv/)
-* Telegram API credentials ([get them here](https://my.telegram.org))
-
-**Setup:**
-1. Install dependencies:
-   ```bash
-   pip install telethon python-dotenv
-   ```
-2. Create a `.env` file in the same directory with:
-   ```env
-   API_ID=your_api_id
-   API_HASH=your_api_hash
-   ```
-   Or export these as environment variables.
-
-**Usage:**
-```bash
-python3 "Telegram Group Downloader.py"
-```
-Follow the prompts to enter your group/channel link and set parallel download count.
-### 3. mega-tor-downloader.sh
-
-Download files from MEGA public folders using Tor for privacy and to bypass rate limits.
-
-**Supported OS:** Linux (Tested on Ubuntu/Debian)
-
-**Prerequisites:**
-* `megadl` (from [megatools](https://megatools.megous.com/))
-* `torsocks` and `tor` (install via your package manager)
-* `sudo` privileges to manage Tor service
-
-**Setup:**
-1. Install required tools:
-   ```bash
-   sudo apt update
-   sudo apt install megatools torsocks tor
-   ```
-2. Ensure your user can run `sudo systemctl start tor` without password (optional, for smoother automation)
-
-**Usage:**
-```bash
-bash mega-tor-downloader.sh
-```
-You can provide options via flags or interactively:
-* `-u` MEGA folder URL
-* `-d` Destination directory (can be used multiple times)
-* `-r` Max retries (default: 10)
-* `-w` Wait time between retries (default: 10s)
-
----
-
-## ⚙️ Prerequisites
-
-* **Windows/macOS/Linux** with Git & Python installed
-* **Telethon** for the Python script
-* Valid **Telegram API** credentials (`API_ID`, `API_HASH`)
-
----
-
-## 📂 Repository Layout
-
-```
-/ (root)
-├─ repo-clone.bat
-├─ Telegram Group Downloader.py
-├─ mega-tor-downloader.sh
-├─ README.md
-└─ .gitignore
-```
-
-**.gitignore** should include:
-```
-session.session
-telegram_group_media/
-mega-tor-logs/
-*.log
-```
-
----
-
-## 🚑 Troubleshooting
-
-* **repo-clone.bat**: Ensure `git` is in your PATH and run in a writable directory.
-* **Telegram Group Downloader.py**: Verify your `.env` or environment variables are set and your Telegram account has access to the group/channel.
-* **mega-tor-downloader.sh**: Make sure all dependencies are installed and you have sudo privileges. Check logs in `~/Downloads/mega-tor-logs/` if downloads fail.
-
----
+The script will show you how much space you can save and wait for your choice before making any changes.
