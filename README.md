@@ -1,3 +1,5 @@
+
+
 # My Scripts 📦
 
 Welcome\! This is a collection of simple scripts designed to help you with common tasks, even if you're not a programmer.
@@ -9,7 +11,7 @@ Welcome\! This is a collection of simple scripts designed to help you with commo
   * **For Windows Users:**
       * `repo-clone.bat`: A tool to copy everything from one code repository to another.
   * **For Linux Users:**
-      * `mega-tor-downloader.sh`: A script to download files from MEGA.nz anonymously without download limits.
+      * `mega-tor-downloader.sh`: A script to download files from MEGA.nz anonymously.
   * **For All Users (Windows, macOS, Linux):**
       * `Telegram Group Downloader.py`: A program to download all media from a Telegram group or channel.
       * `advaita.py`: A tool to find and remove duplicate files on your computer.
@@ -128,3 +130,66 @@ This script scans a folder, finds all the duplicate files, and helps you clean t
       * **Skip** and do nothing.
 
 The script will show you how much space you can save and wait for your choice before making any changes.
+
+-----
+
+## 🔬 How They Work: The Technology Behind the Scripts
+
+Curious about what makes these scripts tick? Here’s a breakdown of the technologies and algorithms they use.
+
+### `repo-clone.bat`
+
+This script is a **Windows Batch Script**, which is a simple yet powerful way to automate tasks on Windows.
+
+  * **Core Technology:** It uses the command-line version of **Git** (`git.exe`) to perform all the repository operations.
+  * **Algorithm:**
+    1.  **User Input:** It prompts the user for the source and destination repository URLs and a commit message, storing them in variables.
+    2.  **Clone Repos:** It uses `git clone` to download both the source and destination repositories into temporary folders (`src_temp`, `dest_temp`).
+    3.  **File Mirroring:** The `robocopy` command is used to mirror the files from the source temporary folder to the destination temporary folder. The `/MIR` option ensures that the destination is an exact copy, and `/XD .git` excludes the Git history from the copy.
+    4.  **Commit and Push:** It navigates into the destination's temporary folder and uses standard Git commands (`git add .`, `git commit -m`, and `git push`) to save the changes and upload them to the remote repository.
+    5.  **Cleanup:** Finally, it removes the temporary folders to clean up the workspace.
+
+### `Telegram Group Downloader.py`
+
+This script uses the **Python** programming language and a powerful library for interacting with Telegram.
+
+  * **Core Technology:**
+      * **Telethon:** This is a Python library that allows you to programmatically access Telegram's API, just like a real user.
+      * **Asyncio:** This is a Python framework for writing **asynchronous code**. It allows the script to start multiple downloads at the same time without waiting for each one to finish, which dramatically speeds up the process.
+  * **Algorithm:**
+    1.  **Initialization:** The script loads your API credentials and establishes a connection to Telegram using the `TelegramClient`.
+    2.  **Get Entity:** It takes the group/channel link you provide and uses `client.get_entity()` to find the correct chat.
+    3.  **Iterate Messages:** It uses `client.iter_messages()` to loop through every message in the chat's history.
+    4.  **Categorize and Download:** For each message that contains media, it determines the type of media (image, video, audio, etc.) by checking its **MIME type**. It then creates a corresponding folder (e.g., `images`, `videos`) and downloads the file into it.
+    5.  **Parallel Downloads:** Instead of downloading one by one, it creates a "task" for each download and runs them in parallel using `asyncio.gather()`, up to the limit you set. This makes the process much faster.
+
+### `mega-tor-downloader.sh`
+
+This is a **Bash script**, which is a command language for the Linux operating system. It combines several command-line tools to achieve its goal.
+
+  * **Core Technology:**
+      * **`megatools`:** A set of command-line tools for interacting with MEGA.nz. This script specifically uses `megadl` to handle the downloads.
+      * **Tor:** A service that routes your internet traffic through a network of relays to anonymize your connection. This helps bypass MEGA's download quotas, which are based on your IP address.
+      * **`torsocks`:** A tool that forces any application (in this case, `megadl`) to use the Tor network for its internet connection.
+      * **`systemctl`:** The standard Linux command for controlling services, used here to start and restart the Tor service to get a new IP address.
+  * **Algorithm:**
+    1.  **Initialization:** The script starts the Tor service using `sudo systemctl start tor`.
+    2.  **Retry Loop:** It enters a loop that will run up to a maximum number of retries (default is 10).
+    3.  **Get New IP:** At the start of each attempt, it restarts the Tor service (`sudo systemctl restart tor`) to get a new IP address from the Tor network.
+    4.  **Download Attempt:** It then runs the `megadl` command wrapped in `torsocks` to download the files from the provided MEGA URL to the specified destination.
+    5.  **Check for Success:** After each attempt, it checks the exit code of the download command. If the code is `0` (success), it celebrates and exits. If it fails, it waits for a few seconds before starting the next attempt in the loop.
+    6.  **Logging:** All output from the download process is saved to a log file for later inspection if something goes wrong.
+
+### `advaita.py`
+
+This script uses an efficient, two-pass approach to find duplicate files without having to compare every file against every other file.
+
+  * **Core Technology:**
+      * **`os.walk`:** A Python function that "walks" through a directory tree, making it easy to visit every file in a folder and its subfolders.
+      * **`hashlib`:** A Python library that implements various secure hash algorithms. This script uses **SHA-256**, a cryptographic hash function that produces a unique "fingerprint" for any given piece of data. If two files have the same SHA-256 hash, they are virtually certain to be identical.
+  * **Algorithm:**
+    1.  **Pass 1: Group by Size:** The script first walks through the entire directory and groups all files by their **size**. This is very fast and acts as a first filter, since files with different sizes cannot be duplicates.
+    2.  **Pass 2: Group by Hash:** For any group of files that have the same size, the script then calculates the **SHA-256 hash** of each file's content. It then groups the files by their hash.
+    3.  **Identify Duplicates:** Any group of files that have the same hash are confirmed to be duplicates of each other.
+    4.  **User Action:** The script summarizes how many duplicates were found and how much space they occupy. It then presents a menu asking the user whether to delete the duplicates, move them to a separate folder, or do nothing.
+    5.  **Execution:** Based on the user's choice, it performs the selected file operations (delete or move) on all the identified duplicate files, keeping one original copy of each file untouched.
