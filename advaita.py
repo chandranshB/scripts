@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import hashlib
 import argparse
@@ -46,12 +49,8 @@ def get_file_hash(filepath):
         print(f"\n{Colors.YELLOW}⚠️  Could not read file '{filepath}': {e}{Colors.RESET}")
         return None
 
-def find_duplicates(scan_directory):
-    """
-    Finds and processes duplicate files in the given directory.
-    
-    Returns a tuple: (number of duplicates found, total space freed/moved).
-    """
+def find_and_process_duplicates(scan_directory):
+    """Finds all duplicates and then prompts the user for a single action."""
     print(f"{Colors.BOLD}🚀 Starting scan in '{Colors.MAGENTA}{scan_directory}{Colors.RESET}{Colors.BOLD}'...{Colors.RESET}")
     
     # --- Pass 1: Group files by size ---
@@ -63,21 +62,17 @@ def find_duplicates(scan_directory):
     for dirpath, _, filenames in os.walk(scan_directory):
         if os.path.normpath(dirpath).startswith(duplicates_folder_path):
             continue
-            
         for filename in filenames:
             filepath = os.path.join(dirpath, filename)
             file_count += 1
             if file_count % PROGRESS_INDICATOR_COUNT == 0:
                 print(f"{Colors.CYAN}.{Colors.RESET}", end='', flush=True)
-
             try:
                 if not os.path.islink(filepath):
-                    size = os.path.getsize(filepath)
-                    files_by_size[size].append(filepath)
+                    files_by_size[size].append(filepath) if (size := os.path.getsize(filepath)) else None
             except OSError:
                 continue
-
-    print(f"\n{Colors.GREEN}✔  Scanned {file_count} files.{Colors.RESET}")
+    print(f"\n{Colors.GREEN}✔ Scanned {file_count} files.{Colors.RESET}")
 
     # --- Pass 2: Hash files for groups with potential duplicates ---
     files_by_hash = defaultdict(list)
@@ -85,78 +80,84 @@ def find_duplicates(scan_directory):
     
     if not potential_duplicates:
         print(f"\n{Colors.GREEN}✅ No files with identical sizes found. The directory is clean!{Colors.RESET}")
-        return 0, 0
+        return
 
     print(f"{Colors.BOLD}Pass 2: Found {Colors.YELLOW}{len(potential_duplicates)}{Colors.RESET}{Colors.BOLD} groups of files with identical sizes. Now checking content...{Colors.RESET}")
     
-    for size, paths in potential_duplicates.items():
+    for paths in potential_duplicates.values():
         for filepath in paths:
-            file_hash = get_file_hash(filepath)
-            if file_hash:
+            if file_hash := get_file_hash(filepath):
                 files_by_hash[file_hash].append(filepath)
 
-    # --- Filter for actual duplicates (more than one file per hash) ---
+    # --- Filter for actual duplicates ---
     actual_duplicates = [paths for paths in files_by_hash.values() if len(paths) > 1]
     
     if not actual_duplicates:
-        print(f"\n{Colors.GREEN}✅ All files with same size have unique content. No duplicates found!{Colors.RESET}")
-        return 0, 0
-
-    # --- Process duplicates ---
-    total_dupes_found = sum(len(paths) - 1 for paths in actual_duplicates)
-    total_space_processed = 0
-    
-    print(f"\n{Colors.RED}{Colors.BOLD}💥 Found {total_dupes_found} duplicate file(s) in {len(actual_duplicates)} set(s).{Colors.RESET}")
-    
-    duplicates_folder = os.path.join(scan_directory, 'duplicates')
-
-    for i, dup_set in enumerate(actual_duplicates):
-        dup_set.sort()
-        original = dup_set[0]
-        dupes_to_process = dup_set[1:]
+        print(f"\n{Colors.GREEN}✅ All files with the same size have unique content. No duplicates found!{Colors.RESET}")
+        return
         
-        print("\n" + f"{Colors.YELLOW}{'='*60}{Colors.RESET}")
-        print(f"{Colors.BOLD}Duplicate Set {i+1}/{len(actual_duplicates)}{Colors.RESET}")
-        print(f"  {Colors.GREEN}[Original] {original}{Colors.RESET}")
-        for dup in dupes_to_process:
-            print(f"  {Colors.RED}[Duplicate] {dup}{Colors.RESET}")
-        
-        while True:
-            prompt = (f"\n{Colors.CYAN}Choose an action: (D)elete duplicates, "
-                      f"(M)ove to 'duplicates' folder, (S)kip? {Colors.RESET}").strip()
-            action = input(prompt).lower().strip()
+    # --- Present summary and ask for action ---
+    process_duplicates_menu(actual_duplicates, scan_directory)
+
+def process_duplicates_menu(dup_sets, base_dir):
+    """Calculates stats, shows a menu, and processes all duplicates at once."""
+    total_dupes_to_process = 0
+    total_space_to_free = 0
+    all_dupe_files = []
+
+    for dup_set in dup_sets:
+        # Keep the first file as original, rest are duplicates
+        dupes_in_set = sorted(dup_set)[1:]
+        total_dupes_to_process += len(dupes_in_set)
+        all_dupe_files.extend(dupes_in_set)
+        for f in dupes_in_set:
+            total_space_to_free += os.path.getsize(f)
             
-            if action in ['d', 'delete']:
-                for filepath in dupes_to_process:
-                    try:
-                        file_size = os.path.getsize(filepath)
-                        os.remove(filepath)
-                        total_space_processed += file_size
-                        print(f"  {Colors.RED}🗑️  Deleted: {filepath}{Colors.RESET}")
-                    except OSError as e:
-                        print(f"  {Colors.RED}❌ Error deleting {filepath}: {e}{Colors.RESET}")
-                break
-                
-            elif action in ['m', 'move']:
-                try:
-                    os.makedirs(duplicates_folder, exist_ok=True)
-                    for filepath in dupes_to_process:
-                        file_size = os.path.getsize(filepath)
-                        shutil.move(filepath, os.path.join(duplicates_folder, os.path.basename(filepath)))
-                        total_space_processed += file_size
-                        print(f"  {Colors.BLUE}➡️  Moved: {filepath}{Colors.RESET}")
-                except (OSError, shutil.Error) as e:
-                    print(f"  {Colors.RED}❌ Error moving files: {e}{Colors.RESET}")
-                break
-                
-            elif action in ['s', 'skip']:
-                print(f"  {Colors.YELLOW}⏩ Skipping this set...{Colors.RESET}")
-                break
-            else:
-                print(f"  {Colors.RED}Invalid choice. Please enter D, M, or S.{Colors.RESET}")
-    
-    return total_dupes_found, total_space_processed
+    space_mb = total_space_to_free / (1024 * 1024)
 
+    # --- Display Summary & Menu ---
+    print("\n" + f"{Colors.YELLOW}{'='*60}{Colors.RESET}")
+    print(f"{Colors.GREEN}{Colors.BOLD}📊 Scan Complete! Duplicate Summary:{Colors.RESET}")
+    print(f"   - Found {Colors.BOLD}{total_dupes_to_process}{Colors.RESET} duplicate files across {Colors.BOLD}{len(dup_sets)}{Colors.RESET} sets.")
+    print(f"   - Total space occupied by duplicates: {Colors.BOLD}{space_mb:.2f} MB{Colors.RESET}")
+    print(f"{Colors.YELLOW}{'-'*60}{Colors.RESET}")
+    print(f"{Colors.CYAN}{Colors.BOLD}What would you like to do?{Colors.RESET}")
+    print("  [1] Delete all duplicate files")
+    print("  [2] Move all duplicates to a 'duplicates' folder")
+    print("  [3] Skip and exit")
+    
+    while True:
+        choice = input(f"\nEnter your choice (1-3): {Colors.RESET}").strip()
+        if choice in ['1', '2', '3']:
+            break
+        else:
+            print(f"{Colors.RED}Invalid choice. Please enter 1, 2, or 3.{Colors.RESET}")
+
+    # --- Perform Action ---
+    if choice == '1':
+        print(f"\n{Colors.RED}{Colors.BOLD}🗑️ Deleting {total_dupes_to_process} duplicate files...{Colors.RESET}")
+        for filepath in all_dupe_files:
+            try:
+                os.remove(filepath)
+                print(f"  Deleted: {filepath}")
+            except OSError as e:
+                print(f"  {Colors.RED}❌ Error deleting {filepath}: {e}{Colors.RESET}")
+        print(f"\n{Colors.GREEN}✅ Deletion complete.{Colors.RESET}")
+
+    elif choice == '2':
+        duplicates_folder = os.path.join(base_dir, 'duplicates')
+        print(f"\n{Colors.BLUE}{Colors.BOLD}➡️ Moving {total_dupes_to_process} duplicate files to '{duplicates_folder}'...{Colors.RESET}")
+        os.makedirs(duplicates_folder, exist_ok=True)
+        for filepath in all_dupe_files:
+            try:
+                shutil.move(filepath, os.path.join(duplicates_folder, os.path.basename(filepath)))
+                print(f"  Moved: {filepath}")
+            except (OSError, shutil.Error) as e:
+                print(f"  {Colors.RED}❌ Error moving {filepath}: {e}{Colors.RESET}")
+        print(f"\n{Colors.GREEN}✅ Move operation complete.{Colors.RESET}")
+
+    elif choice == '3':
+        print(f"\n{Colors.YELLOW}⏩ Skipping. No files were changed.{Colors.RESET}")
 
 if __name__ == "__main__":
     if sys.platform == "win32":
@@ -178,12 +179,8 @@ if __name__ == "__main__":
         print(f"{Colors.RED}Error: Directory '{scan_dir}' not found.{Colors.RESET}")
         sys.exit(1)
 
-    dupes, space = find_duplicates(scan_dir)
+    find_and_process_duplicates(scan_dir)
     
     print("\n" + f"{Colors.YELLOW}{'='*60}{Colors.RESET}")
-    print(f"{Colors.GREEN}{Colors.BOLD}🎉 Scan Complete!{Colors.RESET}")
-    print(f"Total duplicates processed: {Colors.BOLD}{dupes}{Colors.RESET}")
-    if space > 0:
-        space_mb = space / (1024 * 1024)
-        print(f"Total space recovered/moved: {Colors.BOLD}{space_mb:.2f} MB{Colors.RESET}")
+    print(f"{Colors.GREEN}{Colors.BOLD}🎉 Operation Finished!{Colors.RESET}")
     print(f"{Colors.YELLOW}{'='*60}{Colors.RESET}")
