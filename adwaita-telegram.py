@@ -32,9 +32,11 @@ def load_cache(group_id):
         except json.JSONDecodeError: return None
 
 def clean_generated_files(clean_session=True):
-    print("🧹 Starting cleanup...")
-    files_to_clean = [TEMP_FILE_PATH + ".tmp", CACHE_FILE_NAME]
+    print("\n🧹 Starting cleanup...")
+    files_to_clean = [f for f in os.listdir('.') if f.startswith(TEMP_FILE_PATH)]
+    files_to_clean.append(CACHE_FILE_NAME)
     if clean_session: files_to_clean.append(SESSION_NAME + ".session")
+    
     cleaned_count = 0
     for file_path in files_to_clean:
         if os.path.exists(file_path):
@@ -43,8 +45,13 @@ def clean_generated_files(clean_session=True):
                 print(f"  - Deleted: {file_path}")
                 cleaned_count += 1
             except OSError as e: print(f"  - Error deleting {file_path}: {e}")
-    if cleaned_count == 0: print("✨ No generated files to clean.")
-    else: print("✅ Cleanup complete.")
+    
+    if cleaned_count == 0:
+        if 'telegram-cleaner' not in os.path.basename(os.getcwd()): # A check to avoid printing this in an empty dir
+             print("✨ No generated files found to clean.")
+    else:
+        print("✅ Cleanup complete.")
+
 
 def get_file_hash(file_path):
     sha256 = hashlib.sha256()
@@ -81,9 +88,9 @@ async def select_topic(client, group_entity):
         except ValueError: print("Invalid input.")
 
 async def process_files_in_group(client, group_entity, files, size, threshold, executor, loop):
-    """Async generator that processes a group of same-sized files and yields results."""
+    progress_bar = tqdm(total=len(files), desc=f"Verifying {size/1024/1024:.2f} MB files", unit="file", leave=False)
+    
     if size > threshold:
-        # Simple I/O path for large files (partial hash)
         for file_info_orig in files:
             file_info = file_info_orig.copy()
             try:
@@ -95,14 +102,16 @@ async def process_files_in_group(client, group_entity, files, size, threshold, e
                 if file_info['hash']: yield file_info
             except Exception as e:
                 tqdm.write(f"  ⚠️  Error on msg {file_info.get('id', 'N/A')}: {e}")
+            progress_bar.update(1)
     else:
-        # Parallel CPU+I/O path for smaller files (full hash)
         download_path, hash_task, processed_info = None, None, None
         for i, file_info_orig in enumerate(files):
             file_info = file_info_orig.copy()
             try:
                 message = await client.get_messages(group_entity, ids=file_info['id'])
-                if not message or not message.media: continue
+                if not message or not message.media: 
+                    progress_bar.update(1)
+                    continue
                 current_download_path = f"{TEMP_FILE_PATH}_{i}.tmp"
                 await client.download_media(message.media, file=current_download_path)
                 if hash_task:
@@ -118,6 +127,7 @@ async def process_files_in_group(client, group_entity, files, size, threshold, e
                 tqdm.write(f"  ⚠️  Error on msg {file_info.get('id', 'N/A')}: {e}")
                 hash_task = None
                 if download_path and os.path.exists(download_path): os.remove(download_path)
+            progress_bar.update(1)
         if hash_task:
             try:
                 processed_info['hash'] = await hash_task
@@ -128,6 +138,7 @@ async def process_files_in_group(client, group_entity, files, size, threshold, e
                 os.remove(download_path)
             except Exception as e:
                 tqdm.write(f"  ⚠️  Error on final hash: {e}")
+    progress_bar.close()
 
 async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
     scan_target = group_entity.title
@@ -181,7 +192,6 @@ async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
     duplicates_to_delete = []
     threshold_bytes = PARTIAL_HASH_THRESHOLD_MB * 1024 * 1024
     
-    # --- NEW: Create a single, unified progress bar for all of Pass 2 ---
     total_files_to_verify = sum(len(files) for files in potential_duplicates.values())
     with tqdm(total=total_files_to_verify, desc="Verifying Duplicates", unit="file") as pbar:
         with ProcessPoolExecutor(max_workers=1) as executor:
@@ -190,32 +200,25 @@ async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
                 async for file_info in process_files_in_group(client, group_entity, files, size, threshold_bytes, executor, loop):
                     try:
                         original_file = hashes.get(file_info['hash'])
-                        
                         if not original_file:
                             hashes[file_info['hash']] = {'id': file_info['id'], 'date': file_info['date'].isoformat()}
                         else:
                             is_current_file_duplicate = file_info['date'] > datetime.fromisoformat(original_file['date'])
-                            
                             if is_current_file_duplicate:
                                 if mode == 'delete_immediately':
                                     await client.delete_messages(group_entity, [file_info['id']])
                                     pbar.write(f"  - Deleted duplicate: {file_info['name']} (ID: {file_info['id']})")
-                                else:
-                                    duplicates_to_delete.append(file_info)
+                                else: duplicates_to_delete.append(file_info)
                             else:
                                 if mode == 'delete_immediately':
                                     await client.delete_messages(group_entity, [original_file['id']])
                                     pbar.write(f"  - Deleted older duplicate (ID: {original_file['id']}) to keep newer one: {file_info['name']}")
-                                else:
-                                    duplicates_to_delete.append(original_file)
+                                else: duplicates_to_delete.append(original_file)
                                 hashes[file_info['hash']] = {'id': file_info['id'], 'date': file_info['date'].isoformat()}
-                        
                         cache['hashes'] = hashes
                         save_cache(cache)
                     except Exception as e:
                         pbar.write(f"  ⚠️  Error processing hash for msg {file_info.get('id', 'N/A')}: {e}")
-                    
-                    # --- NEW: Update the single progress bar after one file is fully processed ---
                     pbar.update(1)
 
     if mode != 'delete_immediately':
@@ -275,6 +278,11 @@ async def main():
         if topic_id is None: topic_id = 0 
         await find_and_delete_duplicates(client, group, topic_id if topic_id != 0 else None, mode)
 
+        # --- NEW: Final cleanup on successful completion ---
+        print("\n✅ Process finished. Performing final cleanup of all generated files.")
+        clean_generated_files(clean_session=True)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1].lower() == '--clean':
         clean_generated_files(clean_session=True)
@@ -282,8 +290,11 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\n👋 Script interrupted by user. Progress has been saved. Goodbye!")
+        print("\n\n👋 Script interrupted by user. Cleaning up temp files...")
+        clean_generated_files(clean_session=False) # Keep session on cancel
+        print("Progress has been saved. Goodbye!")
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ An unexpected error occurred: {e}")
+        clean_generated_files(clean_session=False) # Keep session on error
         sys.exit(1)

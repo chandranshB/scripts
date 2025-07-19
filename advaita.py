@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import hashlib
 import argparse
@@ -33,7 +30,7 @@ def print_logo():
  / ___ \ (_| |\ V / (_| | | || (_| |
 /_/   \_\__,_| \_/ \__,_|_|\__\__,_|
 {Colors.RESET}
-        {Colors.YELLOW}--- by chandransh ---{Colors.RESET}
+            {Colors.YELLOW}--- Shandran Edition ---{Colors.RESET}
 """
     print(logo)
 
