@@ -9,6 +9,7 @@ from telethon import TelegramClient
 from telethon.tl.types import Channel, Chat, DocumentAttributeFilename
 from telethon.tl.functions.channels import GetForumTopicsRequest
 from collections import defaultdict
+from tqdm.asyncio import tqdm
 
 # --- CONFIGURATION ---
 SESSION_NAME = 'telegram_cleaner'
@@ -79,6 +80,55 @@ async def select_topic(client, group_entity):
             else: print("Invalid number.")
         except ValueError: print("Invalid input.")
 
+async def process_files_in_group(client, group_entity, files, size, threshold, executor, loop):
+    """Async generator that processes a group of same-sized files and yields results."""
+    if size > threshold:
+        # Simple I/O path for large files (partial hash)
+        for file_info_orig in files:
+            file_info = file_info_orig.copy()
+            try:
+                message = await client.get_messages(group_entity, ids=file_info['id'])
+                if not message or not message.media: continue
+                file_info['hash'] = await get_partial_hash(client, message.media)
+                file_info['name'] = next((attr.file_name for attr in message.document.attributes if isinstance(attr, DocumentAttributeFilename)), 'N/A')
+                file_info['date'] = datetime.fromisoformat(file_info['date'])
+                if file_info['hash']: yield file_info
+            except Exception as e:
+                tqdm.write(f"  ⚠️  Error on msg {file_info.get('id', 'N/A')}: {e}")
+    else:
+        # Parallel CPU+I/O path for smaller files (full hash)
+        download_path, hash_task, processed_info = None, None, None
+        for i, file_info_orig in enumerate(files):
+            file_info = file_info_orig.copy()
+            try:
+                message = await client.get_messages(group_entity, ids=file_info['id'])
+                if not message or not message.media: continue
+                current_download_path = f"{TEMP_FILE_PATH}_{i}.tmp"
+                await client.download_media(message.media, file=current_download_path)
+                if hash_task:
+                    processed_info['hash'] = await hash_task
+                    msg_for_name = await client.get_messages(group_entity, ids=processed_info['id'])
+                    processed_info['name'] = next((attr.file_name for attr in msg_for_name.document.attributes if isinstance(attr, DocumentAttributeFilename)), 'N/A') if msg_for_name and msg_for_name.document else 'N/A'
+                    processed_info['date'] = datetime.fromisoformat(processed_info['date'])
+                    if processed_info['hash']: yield processed_info
+                    os.remove(download_path)
+                download_path, processed_info = current_download_path, file_info
+                hash_task = loop.run_in_executor(executor, get_file_hash, download_path)
+            except Exception as e:
+                tqdm.write(f"  ⚠️  Error on msg {file_info.get('id', 'N/A')}: {e}")
+                hash_task = None
+                if download_path and os.path.exists(download_path): os.remove(download_path)
+        if hash_task:
+            try:
+                processed_info['hash'] = await hash_task
+                msg_for_name = await client.get_messages(group_entity, ids=processed_info['id'])
+                processed_info['name'] = next((attr.file_name for attr in msg_for_name.document.attributes if isinstance(attr, DocumentAttributeFilename)), 'N/A') if msg_for_name and msg_for_name.document else 'N/A'
+                processed_info['date'] = datetime.fromisoformat(processed_info['date'])
+                if processed_info['hash']: yield processed_info
+                os.remove(download_path)
+            except Exception as e:
+                tqdm.write(f"  ⚠️  Error on final hash: {e}")
+
 async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
     scan_target = group_entity.title
     scan_args = {'entity': group_entity}
@@ -103,21 +153,22 @@ async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
         print(f"\n🔍 Starting Pass 1: Indexing files in '{scan_target}'...")
         if last_message_id:
             print(f"  ...resuming from message ID {last_message_id}")
-            scan_args['offset_id'] = last_message_id
-        message_count = 0
-        async for message in client.iter_messages(**scan_args):
-            message_count += 1
-            cache['last_message_id'] = message.id
-            file_obj = getattr(message, 'document', getattr(message, 'photo', None))
-            if file_obj and hasattr(file_obj, 'size'):
-                files_by_size[file_obj.size].append({'id': message.id, 'date': message.date.isoformat()})
-            if message_count % 200 == 0:
-                print(f"  ...scanned {message_count} messages, saving progress...")
-                cache['files_by_size'] = {str(k): v for k, v in files_by_size.items()}
-                save_cache(cache)
+        
+        with tqdm(total=None, desc="Scanning messages", unit=" msg") as pbar:
+            async for message in client.iter_messages(**scan_args):
+                pbar.update(1)
+                cache['last_message_id'] = message.id
+                file_obj = getattr(message, 'document', getattr(message, 'photo', None))
+                if file_obj and hasattr(file_obj, 'size'):
+                    files_by_size[file_obj.size].append({'id': message.id, 'date': message.date.isoformat()})
+                if pbar.n > 0 and pbar.n % 200 == 0:
+                    pbar.set_postfix_str("Saving progress...")
+                    cache['files_by_size'] = {str(k): v for k, v in files_by_size.items()}
+                    save_cache(cache)
+        
         cache['pass1_complete'] = True
         cache['files_by_size'] = {str(k): v for k, v in files_by_size.items()}
-        print("✅ Pass 1 Complete. Saving final index.")
+        print("\n✅ Pass 1 Complete. Saving final index.")
         save_cache(cache)
     else:
         print("✅ Pass 1 was already complete. Skipping to verification.")
@@ -130,39 +181,42 @@ async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
     duplicates_to_delete = []
     threshold_bytes = PARTIAL_HASH_THRESHOLD_MB * 1024 * 1024
     
-    with ProcessPoolExecutor(max_workers=1) as executor:
-        loop = asyncio.get_running_loop()
-        for size, files in potential_duplicates.items():
-            print(f"  ...verifying {len(files)} files of size {size / 1024 / 1024:.2f} MB")
-            
-            # This complex logic handles both partial hashing for large files and parallel processing for smaller ones
-            async for file_info in process_files_in_group(client, group_entity, files, size, threshold_bytes, executor, loop):
-                try:
-                    original_file = hashes.get(file_info['hash'])
-                    
-                    if not original_file:
-                        hashes[file_info['hash']] = {'id': file_info['id'], 'date': file_info['date'].isoformat()}
-                    else:
-                        is_current_file_duplicate = file_info['date'] > datetime.fromisoformat(original_file['date'])
+    # --- NEW: Create a single, unified progress bar for all of Pass 2 ---
+    total_files_to_verify = sum(len(files) for files in potential_duplicates.values())
+    with tqdm(total=total_files_to_verify, desc="Verifying Duplicates", unit="file") as pbar:
+        with ProcessPoolExecutor(max_workers=1) as executor:
+            loop = asyncio.get_running_loop()
+            for size, files in potential_duplicates.items():
+                async for file_info in process_files_in_group(client, group_entity, files, size, threshold_bytes, executor, loop):
+                    try:
+                        original_file = hashes.get(file_info['hash'])
                         
-                        if is_current_file_duplicate:
-                            if mode == 'delete_immediately':
-                                await client.delete_messages(group_entity, [file_info['id']])
-                                print(f"  - Deleted duplicate: {file_info['name']} (ID: {file_info['id']})")
-                            else:
-                                duplicates_to_delete.append(file_info)
-                        else: # The stored file is the duplicate
-                            if mode == 'delete_immediately':
-                                await client.delete_messages(group_entity, [original_file['id']])
-                                print(f"  - Deleted older duplicate: (ID: {original_file['id']})")
-                            else:
-                                duplicates_to_delete.append(original_file)
+                        if not original_file:
                             hashes[file_info['hash']] = {'id': file_info['id'], 'date': file_info['date'].isoformat()}
+                        else:
+                            is_current_file_duplicate = file_info['date'] > datetime.fromisoformat(original_file['date'])
+                            
+                            if is_current_file_duplicate:
+                                if mode == 'delete_immediately':
+                                    await client.delete_messages(group_entity, [file_info['id']])
+                                    pbar.write(f"  - Deleted duplicate: {file_info['name']} (ID: {file_info['id']})")
+                                else:
+                                    duplicates_to_delete.append(file_info)
+                            else:
+                                if mode == 'delete_immediately':
+                                    await client.delete_messages(group_entity, [original_file['id']])
+                                    pbar.write(f"  - Deleted older duplicate (ID: {original_file['id']}) to keep newer one: {file_info['name']}")
+                                else:
+                                    duplicates_to_delete.append(original_file)
+                                hashes[file_info['hash']] = {'id': file_info['id'], 'date': file_info['date'].isoformat()}
+                        
+                        cache['hashes'] = hashes
+                        save_cache(cache)
+                    except Exception as e:
+                        pbar.write(f"  ⚠️  Error processing hash for msg {file_info.get('id', 'N/A')}: {e}")
                     
-                    cache['hashes'] = hashes
-                    save_cache(cache)
-                except Exception as e:
-                    print(f"  ⚠️  Error processing hash for msg {file_info.get('id', 'N/A')}: {e}")
+                    # --- NEW: Update the single progress bar after one file is fully processed ---
+                    pbar.update(1)
 
     if mode != 'delete_immediately':
         if not duplicates_to_delete:
@@ -172,10 +226,9 @@ async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
         unique_duplicates_to_delete = {d['id']: d for d in duplicates_to_delete}.values()
         print(f"\n🚨 Found {len(unique_duplicates_to_delete)} duplicate files.")
 
-        if mode == 'list_only':
-            return
+        if mode == 'list_only': return
             
-        confirm = input("➡️  Do you want to delete them all? (yes/no): ").lower()
+        confirm = input("\n➡️  Do you want to delete them all? (yes/no): ").lower()
         if confirm == 'yes':
             print("\nDeleting files...")
             message_ids_to_delete = [f['id'] for f in unique_duplicates_to_delete]
@@ -186,51 +239,6 @@ async def find_and_delete_duplicates(client, group_entity, topic_id, mode):
             print("\nAborted. No files were deleted.")
     else:
         print("\n✅ On-the-fly deletion complete.")
-
-async def process_files_in_group(client, group_entity, files, size, threshold, executor, loop):
-    """An async generator to process files, encapsulating the complex parallel/simple logic."""
-    if size > threshold:
-        for file_info_orig in files:
-            file_info = file_info_orig.copy()
-            try:
-                message = await client.get_messages(group_entity, ids=file_info['id'])
-                if not message or not message.media: continue
-                file_info['hash'] = await get_partial_hash(client, message.media)
-                file_info['name'] = next((attr.file_name for attr in message.document.attributes if isinstance(attr, DocumentAttributeFilename)), 'N/A')
-                file_info['date'] = datetime.fromisoformat(file_info['date'])
-                if file_info['hash']: yield file_info
-            except Exception as e:
-                print(f"  ⚠️  Error on msg {file_info.get('id', 'N/A')}: {e}")
-    else:
-        download_path, hash_task, processed_info = None, None, None
-        for i, file_info_orig in enumerate(files):
-            file_info = file_info_orig.copy()
-            try:
-                message = await client.get_messages(group_entity, ids=file_info['id'])
-                if not message or not message.media: continue
-                current_download_path = f"{TEMP_FILE_PATH}_{i}.tmp"
-                await client.download_media(message.media, file=current_download_path)
-                if hash_task:
-                    processed_info['hash'] = await hash_task
-                    processed_info['name'] = next((attr.file_name for attr in (await client.get_messages(group_entity, ids=processed_info['id'])).document.attributes if isinstance(attr, DocumentAttributeFilename)), 'N/A')
-                    processed_info['date'] = datetime.fromisoformat(processed_info['date'])
-                    if processed_info['hash']: yield processed_info
-                    os.remove(download_path)
-                download_path, processed_info = current_download_path, file_info
-                hash_task = loop.run_in_executor(executor, get_file_hash, download_path)
-            except Exception as e:
-                print(f"  ⚠️  Error on msg {file_info.get('id', 'N/A')}: {e}")
-                hash_task = None
-                if download_path and os.path.exists(download_path): os.remove(download_path)
-        if hash_task:
-            try:
-                processed_info['hash'] = await hash_task
-                processed_info['name'] = next((attr.file_name for attr in (await client.get_messages(group_entity, ids=processed_info['id'])).document.attributes if isinstance(attr, DocumentAttributeFilename)), 'N/A')
-                processed_info['date'] = datetime.fromisoformat(processed_info['date'])
-                if processed_info['hash']: yield processed_info
-                os.remove(download_path)
-            except Exception as e:
-                print(f"  ⚠️  Error on final hash: {e}")
 
 async def main():
     print("--- Telegram Duplicate File Cleaner ---")
@@ -249,7 +257,6 @@ async def main():
             print("✅ You have the required permissions.")
         except Exception as e: print(f"❌ An error occurred: {e}"); return
         
-        # --- NEW: Action Menu ---
         print("\nPlease select an action:")
         print("  1: Find and delete duplicates immediately (on-the-fly)")
         print("  2: Find all duplicates, then ask for confirmation to delete (Recommended)")

@@ -186,7 +186,6 @@ This script uses an efficient, two-pass approach to find duplicate files without
 
   * **Core Technology:**
       * **`os.walk`:** A Python function that "walks" through a directory tree, making it easy to visit every file in a folder and its subfolders.
-      * **`hashlib`:** A Python library that implements various secure hash algorithms. This script uses **SHA-256**, a cryptographic hash function that produces a unique "fingerprint" for any given piece of data. If two files have the same SHA-256 hash, they are virtually certain to be identical.
   * **Algorithm:**
     1.  **Pass 1: Group by Size:** The script first walks through the entire directory and groups all files by their **size**. This is very fast and acts as a first filter, since files with different sizes cannot be duplicates.
     2.  **Pass 2: Group by Hash:** For any group of files that have the same size, the script then calculates the **SHA-256 hash** of each file's content. It then groups the files by their hash.
