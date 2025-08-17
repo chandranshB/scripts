@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import os
 import sys
 import re
@@ -26,13 +27,8 @@ def check_and_install_dependencies():
             dependencies_to_install.append(('python', package_name))
     
     # Check ffmpeg
-    ffmpeg_installed = False
-    try:
-        with open(os.devnull, 'w') as devnull:
-            subprocess.run(['ffmpeg', '-version'], 
-                          stdout=devnull, stderr=devnull, check=True)
-            ffmpeg_installed = True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    ffmpeg_installed = check_ffmpeg_comprehensive()
+    if not ffmpeg_installed:
         dependencies_to_install.append(('ffmpeg', 'ffmpeg'))
     
     # Install dependencies with progress
@@ -63,9 +59,12 @@ def check_and_install_dependencies():
                         if dep_type == 'python':
                             install_python_package_with_progress(dep_name, progress, task)
                         elif dep_type == 'ffmpeg':
-                            install_ffmpeg_with_progress(progress, task)
+                            install_ffmpeg_robust(progress, task)
                         
                         progress.update(task, description=f"✅ {dep_name} installed")
+                        # Verify installation
+                        if dep_type == 'ffmpeg' and not check_ffmpeg_comprehensive():
+                            progress.update(task, description=f"⚠️ {dep_name} installed but not in PATH")
                     except Exception as e:
                         progress.update(task, description=f"❌ {dep_name} failed: {str(e)[:30]}")
                         if dep_type == 'python':
@@ -81,8 +80,11 @@ def check_and_install_dependencies():
                         install_python_package_simple(dep_name)
                         print(f"   ✅ {dep_name} installed")
                     elif dep_type == 'ffmpeg':
-                        install_ffmpeg_simple()
-                        print(f"   ✅ ffmpeg installed")
+                        install_ffmpeg_robust()
+                        if check_ffmpeg_comprehensive():
+                            print(f"   ✅ ffmpeg installed")
+                        else:
+                            print(f"   ⚠️ ffmpeg installed but may need PATH refresh")
                 except Exception as e:
                     print(f"   ❌ {dep_name} failed: {e}")
                     if dep_type == 'python':
@@ -90,13 +92,71 @@ def check_and_install_dependencies():
         
         print("✅ All dependencies processed successfully!\n")
 
+def check_ffmpeg_comprehensive():
+    """Comprehensive FFmpeg check including common installation paths"""
+    # Method 1: Try running ffmpeg command
+    try:
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(['ffmpeg', '-version'], 
+                          stdout=devnull, stderr=devnull, check=True, timeout=10)
+            return True
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Method 2: Check common installation paths
+    system = platform.system().lower()
+    common_paths = []
+    
+    if system == "windows":
+        common_paths = [
+            Path(os.environ.get('PROGRAMFILES', 'C:\\Program Files')) / 'ffmpeg' / 'bin' / 'ffmpeg.exe',
+            Path(os.environ.get('PROGRAMFILES(X86)', 'C:\\Program Files (x86)')) / 'ffmpeg' / 'bin' / 'ffmpeg.exe',
+            Path.home() / 'bin' / 'ffmpeg.exe',
+            Path('C:\\') / 'ffmpeg' / 'bin' / 'ffmpeg.exe',
+            Path('C:\\') / 'tools' / 'ffmpeg' / 'bin' / 'ffmpeg.exe'
+        ]
+    elif system == "darwin":  # macOS
+        common_paths = [
+            Path('/opt/homebrew/bin/ffmpeg'),
+            Path('/usr/local/bin/ffmpeg'),
+            Path('/usr/bin/ffmpeg'),
+            Path.home() / 'bin' / 'ffmpeg'
+        ]
+    elif system == "linux":
+        common_paths = [
+            Path('/usr/bin/ffmpeg'),
+            Path('/usr/local/bin/ffmpeg'),
+            Path('/opt/ffmpeg/bin/ffmpeg'),
+            Path.home() / 'bin' / 'ffmpeg',
+            Path('/snap/bin/ffmpeg')
+        ]
+    
+    # Check if ffmpeg exists in common paths and add to PATH if found
+    for ffmpeg_path in common_paths:
+        if ffmpeg_path.exists():
+            ffmpeg_dir = str(ffmpeg_path.parent)
+            current_path = os.environ.get('PATH', '')
+            if ffmpeg_dir not in current_path:
+                os.environ['PATH'] = ffmpeg_dir + os.pathsep + current_path
+                # Try again with updated PATH
+                try:
+                    with open(os.devnull, 'w') as devnull:
+                        subprocess.run(['ffmpeg', '-version'], 
+                                      stdout=devnull, stderr=devnull, check=True, timeout=10)
+                        return True
+                except:
+                    continue
+            return True
+    
+    return False
+
 def install_python_package_with_progress(package_name, progress, task):
     """Install Python package with progress updates"""
     progress.update(task, description=f"📦 Downloading {package_name}...")
     
     # Use a separate process to install and capture output
     process = subprocess.Popen([
-        sys.executable, "-m", "pip", "install", package_name
+        sys.executable, "-m", "pip", "install", package_name, "--upgrade"
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     
     while True:
@@ -118,281 +178,468 @@ def install_python_package_with_progress(package_name, progress, task):
 def install_python_package_simple(package_name):
     """Simple Python package installation without Rich"""
     subprocess.check_call([
-        sys.executable, "-m", "pip", "install", package_name, "--quiet"
+        sys.executable, "-m", "pip", "install", package_name, "--upgrade", "--quiet"
     ])
 
-def install_ffmpeg_with_progress(progress, task):
-    """Install ffmpeg with progress updates"""
+def install_ffmpeg_robust(progress=None, task=None):
+    """Robust FFmpeg installation with multiple fallback methods"""
     system = platform.system().lower()
     
-    if system == "windows":
-        install_ffmpeg_windows_with_progress(progress, task)
-    elif system == "darwin":  # macOS
-        install_ffmpeg_macos_with_progress(progress, task)
-    elif system == "linux":
-        install_ffmpeg_linux_with_progress(progress, task)
-    else:
-        raise Exception("Unsupported operating system")
-
-def install_ffmpeg_simple():
-    """Simple ffmpeg installation without Rich"""
-    system = platform.system().lower()
+    def update_progress(message):
+        if progress and task:
+            progress.update(task, description=message)
+        else:
+            print(f"   {message}")
     
-    if system == "windows":
-        install_ffmpeg_windows()
-    elif system == "darwin":
-        install_ffmpeg_macos()
-    elif system == "linux":
-        install_ffmpeg_linux()
-    else:
-        raise Exception("Unsupported operating system")
+    try:
+        if system == "windows":
+            install_ffmpeg_windows_robust(update_progress)
+        elif system == "darwin":  # macOS
+            install_ffmpeg_macos_robust(update_progress)
+        elif system == "linux":
+            install_ffmpeg_linux_robust(update_progress)
+        else:
+            raise Exception("Unsupported operating system")
+            
+        # Verify installation after completion
+        if check_ffmpeg_comprehensive():
+            update_progress("✅ FFmpeg installed and verified")
+        else:
+            update_progress("⚠️ FFmpeg installed but verification failed")
+            
+    except Exception as e:
+        update_progress(f"❌ FFmpeg installation failed: {str(e)[:30]}")
+        print(f"\n⚠️ FFmpeg installation failed: {e}")
+        print("The downloader will work but may have limited format support.")
+        print("You can manually install FFmpeg from: https://ffmpeg.org/download.html")
 
-def run_command(cmd, shell=False, check=True):
-    """Run command with proper output suppression for all Python versions"""
+def run_command_safe(cmd, shell=False, check=True, timeout=300):
+    """Run command with proper error handling and timeout"""
     try:
         with open(os.devnull, 'w') as devnull:
             if shell:
-                return subprocess.run(cmd, shell=True, stdout=devnull, stderr=devnull, check=check)
+                return subprocess.run(cmd, shell=True, stdout=devnull, stderr=devnull, 
+                                    check=check, timeout=timeout)
             else:
-                return subprocess.run(cmd, stdout=devnull, stderr=devnull, check=check)
+                return subprocess.run(cmd, stdout=devnull, stderr=devnull, 
+                                    check=check, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise Exception(f"Command timed out after {timeout} seconds")
     except subprocess.CalledProcessError as e:
         if check:
             raise e
         return e
 
-def install_ffmpeg():
-    """Install ffmpeg based on the operating system with full automation"""
-    system = platform.system().lower()
+def install_ffmpeg_windows_robust(update_progress):
+    """Robust FFmpeg installation for Windows with multiple methods"""
     
+    # Method 1: Try winget (Windows 10 1809+ and Windows 11)
+    update_progress("🔍 Trying winget...")
     try:
-        if system == "windows":
-            install_ffmpeg_windows()
-        elif system == "darwin":  # macOS
-            install_ffmpeg_macos()
-        elif system == "linux":
-            install_ffmpeg_linux()
-        else:
-            print("❌ Unsupported operating system for automatic ffmpeg installation")
-            print("Please install ffmpeg manually from: https://ffmpeg.org/download.html")
-            return False
-        return True
-    except Exception as e:
-        print(f"❌ Failed to install ffmpeg: {e}")
-        print("Continuing without ffmpeg (will use single-file formats)...")
-        return False
+        # Check if winget is available
+        subprocess.run(['winget', '--version'], capture_output=True, check=True, timeout=10)
+        update_progress("🚀 Installing via winget...")
+        run_command_safe(['winget', 'install', '--id', 'Gyan.FFmpeg', '--silent', '--accept-source-agreements'])
+        if check_ffmpeg_comprehensive():
+            return
+    except:
+        pass
+    
+    # Method 2: Try chocolatey
+    update_progress("🍫 Trying chocolatey...")
+    try:
+        subprocess.run(['choco', '--version'], capture_output=True, check=True, timeout=10)
+        update_progress("🍫 Installing via chocolatey...")
+        run_command_safe(['choco', 'install', 'ffmpeg', '-y'])
+        if check_ffmpeg_comprehensive():
+            return
+    except:
+        pass
+    
+    # Method 3: Try scoop
+    update_progress("🥄 Trying scoop...")
+    try:
+        subprocess.run(['scoop', '--version'], capture_output=True, check=True, timeout=10)
+        update_progress("🥄 Installing via scoop...")
+        run_command_safe(['scoop', 'install', 'ffmpeg'])
+        if check_ffmpeg_comprehensive():
+            return
+    except:
+        pass
+    
+    # Method 4: Manual installation with multiple sources
+    update_progress("📥 Manual installation...")
+    install_ffmpeg_windows_manual_robust(update_progress)
 
-def install_ffmpeg_windows_with_progress(progress, task):
-    """Install ffmpeg on Windows with progress updates"""
-    progress.update(task, description="🔍 Checking Windows package managers...")
-    
-    # Try winget first (Windows 10+)
-    try:
-        progress.update(task, description="🚀 Installing via winget...")
-        run_command(['winget', 'install', '--id', 'Gyan.FFmpeg', '--silent'])
-        return
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    
-    # Try chocolatey
-    try:
-        progress.update(task, description="🍫 Installing via chocolatey...")
-        run_command(['choco', 'install', 'ffmpeg', '-y'])
-        return
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    
-    # Try scoop
-    try:
-        progress.update(task, description="🥄 Installing via scoop...")
-        run_command(['scoop', 'install', 'ffmpeg'])
-        return
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    
-    # Manual download and install
-    progress.update(task, description="📥 Downloading ffmpeg manually...")
-    install_ffmpeg_windows_manual_with_progress(progress, task)
-
-def install_ffmpeg_windows_manual_with_progress(progress, task):
-    """Manually install ffmpeg on Windows with progress"""
+def install_ffmpeg_windows_manual_robust(update_progress):
+    """Robust manual FFmpeg installation for Windows"""
     import urllib.request
     import zipfile
     import shutil
     
-    # Create temp directory
+    # Multiple download sources
+    download_sources = [
+        {
+            'url': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+            'name': 'Gyan.dev builds'
+        },
+        {
+            'url': 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
+            'name': 'BtbN GitHub builds'
+        }
+    ]
+    
     temp_dir = Path(os.environ.get('TEMP', 'C:\\temp')) / "ffmpeg_install"
     temp_dir.mkdir(exist_ok=True)
     
     try:
-        # Download with progress
-        progress.update(task, description="📥 Downloading ffmpeg archive...")
-        ffmpeg_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-        zip_path = temp_dir / "ffmpeg.zip"
-        
-        def download_progress_hook(block_num, block_size, total_size):
-            if total_size > 0:
-                percent = min(100, (block_num * block_size * 100) // total_size)
-                progress.update(task, description=f"📥 Downloading ffmpeg... {percent}%")
-        
-        urllib.request.urlretrieve(ffmpeg_url, zip_path, download_progress_hook)
-        
-        # Extract
-        progress.update(task, description="📂 Extracting files...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
-        
-        # Find and install ffmpeg.exe
-        progress.update(task, description="🔧 Installing ffmpeg...")
-        ffmpeg_exe = None
-        for root, dirs, files in os.walk(temp_dir):
-            if 'ffmpeg.exe' in files:
-                ffmpeg_exe = Path(root) / 'ffmpeg.exe'
-                break
-        
-        if ffmpeg_exe and ffmpeg_exe.exists():
+        success = False
+        for source in download_sources:
             try:
-                # Try Program Files first
-                program_files = Path(os.environ.get('PROGRAMFILES', 'C:\\Program Files'))
-                ffmpeg_dir = program_files / "ffmpeg" / "bin"
-                ffmpeg_dir.mkdir(parents=True, exist_ok=True)
+                update_progress(f"📥 Downloading from {source['name']}...")
+                zip_path = temp_dir / "ffmpeg.zip"
                 
-                shutil.copy2(ffmpeg_exe, ffmpeg_dir / "ffmpeg.exe")
+                # Download with timeout and retries
+                for attempt in range(3):
+                    try:
+                        urllib.request.urlretrieve(source['url'], zip_path)
+                        break
+                    except Exception as e:
+                        if attempt == 2:
+                            raise e
+                        update_progress(f"📥 Retry {attempt + 2}/3...")
+                        time.sleep(2)
                 
-                # Update PATH
-                current_path = os.environ.get('PATH', '')
-                if str(ffmpeg_dir) not in current_path:
-                    run_command(f'setx PATH "{current_path};{ffmpeg_dir}"', shell=True, check=False)
-                os.environ['PATH'] = str(ffmpeg_dir) + os.pathsep + current_path
+                # Extract
+                update_progress("📂 Extracting files...")
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
                 
-            except PermissionError:
-                # Fallback to user directory
-                user_bin = Path.home() / "bin"
-                user_bin.mkdir(exist_ok=True)
-                shutil.copy2(ffmpeg_exe, user_bin / "ffmpeg.exe")
+                # Find ffmpeg.exe
+                ffmpeg_exe = None
+                for root, dirs, files in os.walk(temp_dir):
+                    if 'ffmpeg.exe' in files:
+                        ffmpeg_exe = Path(root) / 'ffmpeg.exe'
+                        break
                 
-                current_path = os.environ.get('PATH', '')
-                os.environ['PATH'] = str(user_bin) + os.pathsep + current_path
-        else:
-            raise Exception("Could not find ffmpeg.exe in archive")
+                if not ffmpeg_exe or not ffmpeg_exe.exists():
+                    continue
+                
+                # Install to multiple locations for maximum compatibility
+                update_progress("🔧 Installing FFmpeg...")
+                
+                install_locations = [
+                    Path(os.environ.get('PROGRAMFILES', 'C:\\Program Files')) / 'ffmpeg' / 'bin',
+                    Path('C:\\') / 'ffmpeg' / 'bin',
+                    Path.home() / 'bin',
+                    Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'ffmpeg' / 'bin'
+                ]
+                
+                installed = False
+                for install_dir in install_locations:
+                    try:
+                        install_dir.mkdir(parents=True, exist_ok=True)
+                        target_path = install_dir / 'ffmpeg.exe'
+                        shutil.copy2(ffmpeg_exe, target_path)
+                        
+                        # Update PATH
+                        update_path_windows(str(install_dir))
+                        
+                        # Test if it works
+                        if check_ffmpeg_comprehensive():
+                            installed = True
+                            break
+                            
+                    except PermissionError:
+                        continue
+                    except Exception:
+                        continue
+                
+                if installed:
+                    success = True
+                    break
+                    
+            except Exception as e:
+                continue
+        
+        if not success:
+            raise Exception("All download sources failed")
             
     finally:
         # Cleanup
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-def install_ffmpeg_macos_with_progress(progress, task):
-    """Install ffmpeg on macOS with progress updates"""
-    # Check if Homebrew is installed
-    try:
-        run_command(['brew', '--version'])
-        homebrew_installed = True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        homebrew_installed = False
-    
-    if not homebrew_installed:
-        progress.update(task, description="🍺 Installing Homebrew first...")
-        install_cmd = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-        os.system(install_cmd)
+def update_path_windows(new_path):
+    """Update Windows PATH environment variable"""
+    current_path = os.environ.get('PATH', '')
+    if new_path not in current_path:
+        # Update for current session
+        os.environ['PATH'] = new_path + os.pathsep + current_path
         
-        # Add to PATH
-        homebrew_paths = ['/opt/homebrew/bin', '/usr/local/bin']
-        current_path = os.environ.get('PATH', '')
-        for path in homebrew_paths:
-            if Path(path).exists() and path not in current_path:
-                os.environ['PATH'] = path + os.pathsep + current_path
-                break
-    
-    # Install ffmpeg
-    progress.update(task, description="🔧 Installing ffmpeg via Homebrew...")
-    
-    # Run brew install with live output capture
-    process = subprocess.Popen(['brew', 'install', 'ffmpeg'], 
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
-                              text=True, bufsize=1)
-    
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            if 'Downloading' in output:
-                progress.update(task, description="📥 Downloading ffmpeg...")
-            elif 'Installing' in output:
-                progress.update(task, description="🔧 Installing ffmpeg...")
-            elif 'Pouring' in output:
-                progress.update(task, description="🍺 Finalizing installation...")
+        # Try to update system PATH (requires admin) or user PATH
+        try:
+            # Try system PATH first
+            run_command_safe(f'setx PATH "{new_path};%PATH%" /M', shell=True, check=False)
+        except:
+            try:
+                # Fallback to user PATH
+                run_command_safe(f'setx PATH "{new_path};%PATH%"', shell=True, check=False)
+            except:
+                pass
 
-def install_ffmpeg_linux_with_progress(progress, task):
-    """Install ffmpeg on Linux with progress updates"""
-    progress.update(task, description="🔍 Detecting package manager...")
+def install_ffmpeg_macos_robust(update_progress):
+    """Robust FFmpeg installation for macOS"""
     
-    # Package managers with progress-friendly commands
+    # Method 1: Try Homebrew
+    update_progress("🍺 Checking Homebrew...")
+    try:
+        subprocess.run(['brew', '--version'], capture_output=True, check=True, timeout=10)
+        homebrew_available = True
+    except:
+        homebrew_available = False
+    
+    if not homebrew_available:
+        update_progress("🍺 Installing Homebrew...")
+        try:
+            # Install Homebrew
+            install_cmd = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+            subprocess.run(install_cmd, shell=True, check=True, timeout=600)
+            
+            # Add to PATH
+            homebrew_paths = ['/opt/homebrew/bin', '/usr/local/bin']
+            current_path = os.environ.get('PATH', '')
+            for path in homebrew_paths:
+                if Path(path).exists() and path not in current_path:
+                    os.environ['PATH'] = path + os.pathsep + current_path
+                    break
+        except:
+            pass
+    
+    if homebrew_available or check_command_exists('brew'):
+        update_progress("🔧 Installing FFmpeg via Homebrew...")
+        try:
+            run_command_safe(['brew', 'install', 'ffmpeg'], timeout=600)
+            if check_ffmpeg_comprehensive():
+                return
+        except:
+            pass
+    
+    # Method 2: Try MacPorts
+    update_progress("🚢 Trying MacPorts...")
+    try:
+        if check_command_exists('port'):
+            run_command_safe(['sudo', 'port', 'install', 'ffmpeg'], timeout=600)
+            if check_ffmpeg_comprehensive():
+                return
+    except:
+        pass
+    
+    # Method 3: Manual binary installation
+    update_progress("📥 Manual installation...")
+    install_ffmpeg_macos_manual(update_progress)
+
+def install_ffmpeg_macos_manual(update_progress):
+    """Manual FFmpeg installation for macOS"""
+    import urllib.request
+    import tarfile
+    import shutil
+    
+    update_progress("📥 Downloading FFmpeg binary...")
+    temp_dir = Path("/tmp") / "ffmpeg_install"
+    temp_dir.mkdir(exist_ok=True)
+    
+    try:
+        # Download static build
+        ffmpeg_url = "https://evermeet.cx/ffmpeg/getrelease/zip"
+        zip_path = temp_dir / "ffmpeg.zip"
+        
+        urllib.request.urlretrieve(ffmpeg_url, zip_path)
+        
+        # Extract
+        update_progress("📂 Extracting...")
+        import zipfile
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+        
+        # Install
+        update_progress("🔧 Installing...")
+        ffmpeg_binary = temp_dir / "ffmpeg"
+        if ffmpeg_binary.exists():
+            install_locations = [
+                Path("/usr/local/bin"),
+                Path.home() / "bin"
+            ]
+            
+            for install_dir in install_locations:
+                try:
+                    install_dir.mkdir(parents=True, exist_ok=True)
+                    target = install_dir / "ffmpeg"
+                    shutil.copy2(ffmpeg_binary, target)
+                    os.chmod(target, 0o755)
+                    
+                    # Update PATH
+                    current_path = os.environ.get('PATH', '')
+                    if str(install_dir) not in current_path:
+                        os.environ['PATH'] = str(install_dir) + os.pathsep + current_path
+                    
+                    if check_ffmpeg_comprehensive():
+                        break
+                except:
+                    continue
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+def install_ffmpeg_linux_robust(update_progress):
+    """Robust FFmpeg installation for Linux"""
+    
+    # Enhanced package managers list with better commands
     package_managers = [
-        # Ubuntu/Debian
-        ('apt', ['sudo', 'apt', 'update'], ['sudo', 'apt', 'install', '-y', 'ffmpeg']),
-        # Fedora
-        ('dnf', None, ['sudo', 'dnf', 'install', '-y', 'ffmpeg']),
-        # RHEL/CentOS
+        # Ubuntu/Debian - try multiple methods
+        ('apt', ['sudo', 'apt', 'update', '-y'], ['sudo', 'apt', 'install', '-y', 'ffmpeg']),
+        ('apt-get', None, ['sudo', 'apt-get', 'install', '-y', 'ffmpeg']),
+        
+        # Fedora/RHEL
+        ('dnf', None, ['sudo', 'dnf', 'install', '-y', 'ffmpeg', '--allowerasing']),
         ('yum', ['sudo', 'yum', 'install', '-y', 'epel-release'], ['sudo', 'yum', 'install', '-y', 'ffmpeg']),
+        
         # Arch Linux
         ('pacman', None, ['sudo', 'pacman', '-S', '--noconfirm', 'ffmpeg']),
+        
         # openSUSE
-        ('zypper', None, ['sudo', 'zypper', 'install', '-y', 'ffmpeg']),
+        ('zypper', ['sudo', 'zypper', 'refresh'], ['sudo', 'zypper', 'install', '-y', 'ffmpeg']),
+        
         # Alpine
-        ('apk', None, ['sudo', 'apk', 'add', 'ffmpeg']),
+        ('apk', ['sudo', 'apk', 'update'], ['sudo', 'apk', 'add', 'ffmpeg']),
+        
+        # Gentoo
+        ('emerge', None, ['sudo', 'emerge', 'media-video/ffmpeg']),
     ]
+    
+    update_progress("🔍 Detecting package manager...")
     
     for pm_name, update_cmd, install_cmd in package_managers:
         try:
             # Check if package manager exists
-            run_command(['which', pm_name])
+            if not check_command_exists(pm_name):
+                continue
+                
+            update_progress(f"📦 Using {pm_name}...")
             
-            progress.update(task, description=f"📦 Using {pm_name} package manager...")
-            
+            # Update package lists if needed
             if update_cmd:
-                progress.update(task, description=f"🔄 Updating package lists...")
-                run_command(update_cmd)
+                update_progress(f"🔄 Updating package lists...")
+                try:
+                    run_command_safe(update_cmd, timeout=300)
+                except:
+                    pass  # Continue even if update fails
             
-            progress.update(task, description=f"🔧 Installing ffmpeg via {pm_name}...")
+            # Install ffmpeg
+            update_progress(f"🔧 Installing FFmpeg via {pm_name}...")
+            run_command_safe(install_cmd, timeout=600)
             
-            # Run install command with progress monitoring
-            process = subprocess.Popen(install_cmd, stdout=subprocess.PIPE, 
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1)
-            
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    if any(word in output.lower() for word in ['downloading', 'download']):
-                        progress.update(task, description=f"📥 Downloading ffmpeg...")
-                    elif any(word in output.lower() for word in ['installing', 'install']):
-                        progress.update(task, description=f"🔧 Installing ffmpeg...")
-                    elif any(word in output.lower() for word in ['configuring', 'setting up']):
-                        progress.update(task, description=f"⚙️ Configuring ffmpeg...")
-            
-            if process.returncode == 0:
+            # Verify installation
+            if check_ffmpeg_comprehensive():
                 return
                 
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except Exception as e:
             continue
     
-    # Try snap as fallback
+    # Try universal package managers
+    update_progress("📦 Trying universal package managers...")
+    
+    # Try snap
     try:
-        progress.update(task, description="📦 Trying snap installation...")
-        run_command(['sudo', 'snap', 'install', 'ffmpeg'])
-        return
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        if check_command_exists('snap'):
+            update_progress("📦 Installing via snap...")
+            run_command_safe(['sudo', 'snap', 'install', 'ffmpeg'])
+            if check_ffmpeg_comprehensive():
+                return
+    except:
         pass
     
-    # Try flatpak as last resort
+    # Try flatpak
     try:
-        progress.update(task, description="📦 Trying flatpak installation...")
-        run_command(['flatpak', 'install', '-y', 'flathub', 'org.freedesktop.Platform.ffmpeg-full'])
-        return
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        if check_command_exists('flatpak'):
+            update_progress("📦 Installing via flatpak...")
+            run_command_safe(['flatpak', 'install', '-y', 'flathub', 'org.freedesktop.Platform.ffmpeg-full'])
+            if check_ffmpeg_comprehensive():
+                return
+    except:
         pass
     
-    raise Exception("No supported package manager found")
+    # Try AppImage or static build
+    update_progress("📥 Trying static build...")
+    install_ffmpeg_linux_static(update_progress)
+
+def install_ffmpeg_linux_static(update_progress):
+    """Install static FFmpeg build on Linux"""
+    import urllib.request
+    import tarfile
+    import shutil
+    
+    temp_dir = Path("/tmp") / "ffmpeg_install"
+    temp_dir.mkdir(exist_ok=True)
+    
+    try:
+        # Download static build
+        update_progress("📥 Downloading static build...")
+        ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+        tar_path = temp_dir / "ffmpeg-static.tar.xz"
+        
+        urllib.request.urlretrieve(ffmpeg_url, tar_path)
+        
+        # Extract
+        update_progress("📂 Extracting...")
+        with tarfile.open(tar_path, 'r:xz') as tar_ref:
+            tar_ref.extractall(temp_dir)
+        
+        # Find and install ffmpeg binary
+        update_progress("🔧 Installing...")
+        ffmpeg_binary = None
+        for root, dirs, files in os.walk(temp_dir):
+            if 'ffmpeg' in files:
+                candidate = Path(root) / 'ffmpeg'
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    ffmpeg_binary = candidate
+                    break
+        
+        if ffmpeg_binary:
+            install_locations = [
+                Path("/usr/local/bin"),
+                Path.home() / "bin",
+                Path("/opt/ffmpeg/bin")
+            ]
+            
+            for install_dir in install_locations:
+                try:
+                    install_dir.mkdir(parents=True, exist_ok=True)
+                    target = install_dir / "ffmpeg"
+                    shutil.copy2(ffmpeg_binary, target)
+                    os.chmod(target, 0o755)
+                    
+                    # Update PATH
+                    current_path = os.environ.get('PATH', '')
+                    if str(install_dir) not in current_path:
+                        os.environ['PATH'] = str(install_dir) + os.pathsep + current_path
+                    
+                    if check_ffmpeg_comprehensive():
+                        break
+                except:
+                    continue
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+def check_command_exists(command):
+    """Check if a command exists in PATH"""
+    try:
+        subprocess.run([command, '--version'], capture_output=True, check=True, timeout=10)
+        return True
+    except:
+        try:
+            subprocess.run(['which', command], capture_output=True, check=True, timeout=10)
+            return True
+        except:
+            return False
 
 # Install dependencies before importing other modules
 check_and_install_dependencies()
@@ -476,7 +723,7 @@ class RobustYTDownloader:
             return 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio'
         
         # Check if ffmpeg is available for merging
-        ffmpeg_available = self.check_ffmpeg()
+        ffmpeg_available = check_ffmpeg_comprehensive()
         
         if quality == 'best':
             if ffmpeg_available:
@@ -518,16 +765,6 @@ class RobustYTDownloader:
                     f'best[height={height}]/best[height<={height}]/best'
                 )
     
-    def check_ffmpeg(self):
-        """Check if ffmpeg is available"""
-        try:
-            with open(os.devnull, 'w') as devnull:
-                subprocess.run(['ffmpeg', '-version'], 
-                              stdout=devnull, stderr=devnull, check=True)
-                return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
-    
     def setup_ydl_options(self, output_path, quality='best', audio_only=False, 
                          embed_metadata=True, playlist_index=None):
         """Setup yt-dlp options with maximum reliability"""
@@ -556,7 +793,7 @@ class RobustYTDownloader:
             'outtmpl': outtmpl,
             
             # Enable merging if ffmpeg is available
-            'merge_output_format': 'mp4' if not audio_only and self.check_ffmpeg() else None,
+            'merge_output_format': 'mp4' if not audio_only and check_ffmpeg_comprehensive() else None,
             'addmetadata': embed_metadata,
             'embedsubs': False,
             
@@ -626,7 +863,7 @@ class RobustYTDownloader:
                     # Show what quality we're targeting and ffmpeg status
                     quality = options.get('quality', 'best')
                     if not options.get('audio_only', False) and quality != 'best':
-                        ffmpeg_status = "✅" if self.check_ffmpeg() else "⚠️"
+                        ffmpeg_status = "✅" if check_ffmpeg_comprehensive() else "⚠️"
                         console.print(f"[dim]Requesting: {quality}p quality {ffmpeg_status}[/dim]")
                 else:
                     video_title = "Unknown Video"
@@ -776,7 +1013,7 @@ def main():
     downloader = RobustYTDownloader()
     
     # Show system status
-    ffmpeg_status = "✅ Available" if downloader.check_ffmpeg() else "❌ Not found"
+    ffmpeg_status = "✅ Available" if check_ffmpeg_comprehensive() else "❌ Not found"
     console.print(f"[dim]FFmpeg: {ffmpeg_status}[/dim]")
     
     while True:
