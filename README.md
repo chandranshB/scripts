@@ -1,134 +1,357 @@
-# My Scripts 📦
+# scripts
 
-Welcome\! This is a friendly collection of powerful, easy-to-use scripts designed to automate everyday tasks. Whether you're a developer or just someone who wants to get things done faster, you'll find something useful here.
+A collection of standalone automation scripts and command-line utilities for local and remote file deduplication, media downloading, filesystem organization, and Git repository mirroring.
 
-Think of these as digital tools that can organize your files, clean up duplicates, download media, and more, all with a few simple commands.
+[![Python Version](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
+[![Shell Script](https://img.shields.io/badge/Shell-Bash-4EAA25?style=flat&logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![Batch Script](https://img.shields.io/badge/Windows-Batch-0078D6?style=flat&logo=windows&logoColor=white)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/windows-commands)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey?style=flat)]()
 
-## ⭐ Why Trust These Scripts?
+---
 
-It's smart to be careful about running scripts from the internet. Here’s why you can trust the ones in this collection:
+## Repository Topics
 
-  * **Transparent and Open Source:** The code is not hidden. You can open any script file in a simple text editor to see exactly what it does. There are no secrets.
-  * **No Data Collection:** These scripts run on your computer and your computer alone. They do not collect or send any of your personal information anywhere.
-  * **Focused on the Task:** Each script is designed to do one job and do it well. They don't include extra, unnecessary features that could compromise your security.
+Suggested GitHub repository tags for discovery:
 
-## 🚀 Getting Started: The Basics
+`automation` `python` `bash` `batch` `cli` `utilities` `deduplication` `file-organizer` `youtube-downloader` `telegram-downloader` `yt-dlp` `telethon` `tor` `megatools` `git-mirror`
 
-Most of these scripts use **Python**, a popular and safe programming language. A couple are for specific operating systems. Here’s what you might need before you start.
+---
 
-1.  **Install Python (For `.py` scripts):** If you don't have it, download Python from the official website [python.org](https://www.python.org/). During installation, **make sure to check the box that says "Add Python to PATH"**.
-2.  **Install Git (For `repo-clone.bat`):** If you're a Windows user and want to use the repository cloner, install Git for Windows from [git-scm.com](https://git-scm.com/download/win).
-3.  **Open a Terminal (or Command Prompt):** This is the application you'll use to run the scripts.
-      * **Windows:** Press the Windows Key, type `cmd` or `powershell`, and press Enter.
-      * **macOS/Linux:** Look for an application called "Terminal".
+## Contents
 
------
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Utilities](#utilities)
+  - [advaita.py](#advaitapy)
+  - [organizer.py](#organizerpy)
+  - [YTDownloader.py](#ytdownloaderpy)
+  - [Telegram Group Downloader.py](#telegram-group-downloaderpy)
+  - [adwaita-telegram.py](#adwaita-telegrampy)
+  - [mega-tor-downloader.sh](#mega-tor-downloadersh)
+  - [repo-clone.bat](#repo-clonebat)
+- [Technical Architecture](#technical-architecture)
+  - [Two-Pass Deduplication](#two-pass-deduplication)
+  - [Bandwidth-Optimized Partial Hashing](#bandwidth-optimized-partial-hashing)
+  - [Tor IP Rotation Mechanism](#tor-ip-rotation-mechanism)
+- [Environment and Security](#environment-and-security)
 
-## 🛠️ The Scripts Explained
+---
 
-Here’s a simple guide for each script, what it does, and how to use it.
+## Overview
 
-### ✨ `advaita.py` (Finds Duplicate Files on Your PC)
+| Script | Language | OS | Dependencies | Primary Function |
+|---|---|---|---|---|
+| `advaita.py` | Python | Linux, Windows, macOS | Standard Library | Content-based local file deduplication via SHA-256 |
+| `organizer.py` | Python | Linux, Windows, macOS | Standard Library | Extension-based file sorting with custom directory depth |
+| `YTDownloader.py` | Python | Linux, Windows, macOS | `yt-dlp`, `rich`, `ffmpeg` | YouTube video, audio, and playlist downloader with auto-dependency installer |
+| `Telegram Group Downloader.py` | Python | Linux, Windows, macOS | `telethon`, `python-dotenv` | Concurrent media downloader for Telegram groups and channels |
+| `adwaita-telegram.py` | Python | Linux, Windows, macOS | `telethon`, `tqdm` | Remote duplicate file scanner and cleaner for Telegram groups |
+| `mega-tor-downloader.sh` | Bash | Linux | `megatools`, `torsocks`, `tor` | Unattended MEGA folder downloader with Tor exit-node rotation |
+| `repo-clone.bat` | Batch | Windows | `git`, `robocopy` | Git repository synchronization and mirroring utility |
 
-Frees up disk space by finding and helping you remove duplicate files in any folder.
+---
 
-  * **Who it's for:** All users (Windows, macOS, Linux).
-  * **How to Use It:**
-    1.  Open your terminal in the same folder as the script.
-    2.  Run one of the following commands:
-        ```bash
-        # Scan the current folder
-        python advaita.py
+## Prerequisites
 
-        # Or, scan a specific folder
-        python advaita.py "/path/to/your/folder"
-        ```
-    3.  The script will show you how much space can be saved and ask if you want to **delete** the duplicates, **move** them to a "duplicates" folder, or **skip**.
+### Python Environment
 
-### 📂 `organizer.py` (Organizes Your Messy Folders)
+The Python scripts require Python 3.8 or higher. Install required external dependencies using pip:
 
-Automatically sorts files into categorized folders (like `Images`, `Videos`, `Documents`) to clean up clutter.
+```bash
+# Telegram automation tools
+pip install telethon python-dotenv tqdm
 
-  * **Who it's for:** All users (Windows, macOS, Linux).
-  * **How to Use It:**
-    1.  Run the script in your terminal: `python organizer.py`
-    2.  Follow the prompts to enter the **folder you want to clean up** and the **folder where you want to save the organized files**.
-    3.  Choose how to structure the new folders (e.g., keep the original folder layout or flatten everything).
+# YouTube downloader (also handled automatically on first run by YTDownloader.py)
+pip install yt-dlp rich
+```
 
-### 🎬 `YTDownloader.py` (YouTube Video & Audio Downloader)
+### System Tools
 
-A powerful tool to download YouTube videos or just the audio from them. It even installs its own dependencies\!
+- **Git**: Required for `repo-clone.bat` and version control tasks.
+- **Tor and Megatools** (Linux only, for `mega-tor-downloader.sh`):
+  ```bash
+  sudo apt update && sudo apt install megatools torsocks tor
+  ```
+- **FFmpeg**: Required for media extraction in `YTDownloader.py` (the script includes platform-specific auto-install routines).
 
-  * **Who it's for:** All users (Windows, macOS, Linux).
-  * **How to Use It:**
-    1.  Run the script in your terminal: `python YTDownloader.py`
-    2.  The first time you run it, it will automatically check for and install anything it needs.
-    3.  Follow the on-screen menu to choose whether you want to download a video, audio, or a whole playlist, and select your desired quality.
+---
 
-### 📲 Telegram Scripts
+## Utilities
 
-These scripts help you manage and download media from Telegram.
+### advaita.py
 
-**Before You Start:** You'll need an **API ID** and **API Hash** to use these. You can get them for free from Telegram's official site: [my.telegram.org](https://my.telegram.org).
+A standalone, content-based duplicate file finder. It detects identical files regardless of file names using a two-pass size and SHA-256 content verification pipeline.
 
-#### `adwaita-telegram.py` (Finds Duplicate Files in Telegram)
+#### Usage
 
-Scans a Telegram group you're an admin in and helps you find and delete duplicate file uploads to clean up the chat.
+```bash
+# Scan the current working directory
+python advaita.py
 
-  * **Required Library:** `pip install telethon tqdm`
-  * **How to Use It:**
-    1.  Run the script: `python adwaita-telegram.py`
-    2.  Enter your API credentials and the group link when prompted.
-    3.  Choose whether to delete duplicates as they are found or review them all at the end.
+# Scan a target directory
+python advaita.py /path/to/directory
+```
 
-#### `Telegram Group Downloader.py` (Downloads All Media from a Group)
+#### Workflow
 
-Downloads every photo, video, and document from any Telegram group or channel you have access to.
+1. Scans directory trees while excluding symlinks and any existing `./duplicates` subfolder.
+2. Groups candidate files by byte size.
+3. Computes chunked SHA-256 hashes only across size-matched candidates.
+4. Generates a summary of total duplicate count and reclaimable disk space in megabytes.
+5. Displays an interactive action menu:
+   - `[1]` Delete duplicate files (retains the first alphabetical file path).
+   - `[2]` Move duplicate files into a `./duplicates/` folder.
+   - `[3]` Skip and exit without modifying the filesystem.
 
-  * **Required Libraries:** `pip install telethon python-dotenv`
-  * **How to Use It:**
-    1.  Run the script: `python "Telegram Group Downloader.py"`
-    2.  Enter your API credentials (if not saved in a `.env` file), the group link, and how many files you want to download at once.
+---
 
-### 🕵️ `mega-tor-downloader.sh` (Anonymous MEGA Downloader)
+### organizer.py
 
-Downloads files from MEGA.nz folders anonymously using the Tor network. This helps bypass download limits by automatically getting a new IP address.
+A filesystem cleanup utility that categorizes files by extension and moves them into organized destination folders.
 
-  * **Who it's for:** Linux users.
-  * **Before You Start:** You need to install some tools first.
-    ```bash
-    sudo apt update && sudo apt install megatools torsocks tor
-    ```
-  * **How to Use It:**
-    1.  Run the script in your terminal: `bash mega-tor-downloader.sh`
-    2.  Follow the prompts to enter the **MEGA folder URL** and where you want to save the files.
+#### File Categories
 
-### 📜 `repo-clone.bat` (Copies a Git Repository)
+- **Images**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.tiff`, `.webp`, `.svg`
+- **Videos**: `.mp4`, `.mov`, `.avi`, `.m4v`, `.3gp`, `.mpg`, `.mpeg`, `.mkv`, `.wmv`, `.flv`, `.webm`
+- **Audio**: `.mp3`, `.wav`, `.ogg`, `.flac`, `.aac`, `.m4a`
+- **Documents**: `.pdf`, `.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.txt`, `.rtf`, `.odt`
+- **Archives**: `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.bz2`
+- **Code**: `.py`, `.js`, `.html`, `.css`, `.java`, `.c`, `.cpp`, `.sh`
+- **Executables**: `.exe`, `.msi`, `.dmg`, `.app`
+- **Other**: Unmatched file types
 
-A simple tool for developers that mirrors one Git repository to another. It’s like a "copy-paste" for entire code projects.
+#### Usage
 
-  * **Who it's for:** Windows users.
-  * **How to Use It:**
-    1.  Double-click the `repo-clone.bat` file.
-    2.  Follow the prompts to enter the **source URL**, **destination URL**, and a short message describing the copy (a "commit message").
+```bash
+python organizer.py
+```
 
------
+The script interactively prompts for:
+1. **Source path**: Root directory containing files to organize.
+2. **Scan scope**: Entire directory tree or a specific subdirectory.
+3. **Destination path**: Target directory for sorted categories.
+4. **Depth handling**:
+   - `f` (Flatten): Relocates all files directly into category root folders (`Destination/Images/file.png`).
+   - `r` (Retain): Preserves the full relative subfolder hierarchy inside category folders (`Destination/Images/subfolder/file.png`).
+   - `<integer>`: Preserves a specified number of parent directory levels.
 
-## 🔬 How They Work: The Technology Behind the Scripts
+---
 
-Curious about what makes these scripts tick? Here’s a simple breakdown.
+### YTDownloader.py
 
-  * **`advaita.py` & `adwaita-telegram.py` (The Duplicate Finders):**
-    These scripts don't waste time comparing every file. Instead, they use a smart two-step process.
+A full-featured YouTube media downloader supporting single videos, audio extraction, full playlists, and selective video ranges. Includes an automated dependency manager that detects, installs, and configures missing Python modules and FFmpeg binaries across Windows, Linux, and macOS.
 
-    1.  **Step 1: Check the Size.** First, they group together all files that have the exact same size. This is a super-fast way to know which files *might* be duplicates.
-    2.  **Step 2: Create a "Fingerprint".** For files with the same size, the script calculates a unique digital fingerprint (called a "SHA-256 hash"). If the fingerprints match, the files are 100% identical. The oldest file is kept, and the newer ones are marked for deletion.
+#### Features
 
-  * **`organizer.py` (The File Organizer):**
-    This script works like a librarian for your files. It reads the extension of each file (e.g., `.jpg`, `.pdf`) and checks it against a list of categories. Based on the category, it creates the right folder and moves the file there.
+- Single video and audio-only extraction.
+- Playlist parsing with video range selection (e.g., `1-10`, `1,3,5`, or `all`).
+- Quality presets: `best`, `1080p`, `720p`, `480p`, `360p`, `lowest`.
+- Automated metadata embedding.
+- Self-bootstrapping installer for `yt-dlp`, `rich`, and `ffmpeg`.
 
-  * **`mega-tor-downloader.sh` & `repo-clone.bat` (The Automators):**
-    These are shell scripts, which are simple lists of commands for your computer to run in order. They automate tools you could run yourself, like `git` or `megadl`, but save you from having to type them out one by one. The MEGA downloader is special because it also restarts the Tor service to give you a new identity and bypass download limits.
+#### Usage
 
-  * **`YTDownloader.py` & `Telegram Group Downloader.py` (The Downloaders):**
-    These use official or well-regarded libraries (`yt-dlp` and `Telethon`) to communicate with YouTube and Telegram. They use a technique called **asynchronous downloading**, which means they can start downloading multiple files at the same time without waiting for each one to finish. This makes the whole process much, much faster.
+```bash
+python YTDownloader.py
+```
+
+#### Interactive Options
+
+```text
+1. Video
+2. Audio
+3. Playlist
+4. Playlist Audio
+5. Exit
+```
+
+Downloaded files are organized into structured directories under the user's Downloads folder:
+- `Downloads/YouTube_Downloads/Videos/`
+- `Downloads/YouTube_Downloads/Audio/`
+- `Downloads/YouTube_Downloads/Playlists/<Playlist_Title>/`
+
+---
+
+### Telegram Group Downloader.py
+
+An asynchronous media scraper that connects to Telegram channels or groups via the MTProto client (Telethon) and downloads historical media into sorted directories.
+
+#### Requirements
+
+Telegram API credentials (`API_ID` and `API_HASH`) obtained from [my.telegram.org](https://my.telegram.org).
+
+Set these credentials in a `.env` file or provide them interactively:
+
+```env
+API_ID=12345678
+API_HASH=your_api_hash_here
+```
+
+#### Usage
+
+```bash
+python "Telegram Group Downloader.py"
+```
+
+#### Capabilities
+
+- Resolves public channel links (`t.me/channelname`), invite links (`t.me/+hash`), and private channel links (`t.me/c/<id>/<msg>`).
+- Configurable worker pool (1 to 10 parallel downloads via asyncio semaphore).
+- MIME-type sorting:
+  - `images/`
+  - `videos/`
+  - `audio/`
+  - `documents/`
+  - `vcards/`
+  - `other/`
+- Target directory automatically created as `<group_name>_media/`.
+
+---
+
+### adwaita-telegram.py
+
+A duplicate file auditor and cleaner designed for Telegram groups, channels, and forum topics where administrative deletion privileges are available.
+
+#### Requirements
+
+```bash
+pip install telethon tqdm
+```
+
+#### Usage
+
+```bash
+python adwaita-telegram.py
+```
+
+#### Key Capabilities
+
+- **Topic Selection**: Detects forum-enabled supergroups and allows scanning individual topics or the entire chat.
+- **Resumable State**: Saves progress to `progress_cache.json`. If a scan is halted or disconnected, rerun the script to resume from the last indexed position.
+- **Bandwidth Conservation**: Employs partial content hashing for files larger than 10 MB, avoiding unnecessary bandwidth usage.
+- **Cleanup Routine**: Automatically clears cached sessions, temporary hash files, and progress markers when finished.
+
+---
+
+### mega-tor-downloader.sh
+
+A resilient Bash script for downloading public MEGA.nz folders via the Tor network. It prevents transfer interruptions caused by MEGA bandwidth quotas by monitoring transfer status and restarting the Tor daemon to rotate exit IPs upon quota limits.
+
+#### Requirements
+
+```bash
+sudo apt update && sudo apt install megatools torsocks tor
+```
+
+Ensure the current user has `sudo` privileges to restart the Tor service (`systemctl restart tor`).
+
+#### Syntax
+
+```bash
+bash mega-tor-downloader.sh [-u <MEGA_URL>] [-d <DEST_DIR>]... [-r <MAX_RETRIES>] [-w <RETRY_DELAY>] [-h]
+```
+
+#### Options
+
+| Flag | Parameter | Description | Default |
+|---|---|---|---|
+| `-u` | `URL` | Public MEGA folder URL | Prompted if omitted |
+| `-d` | `DIR` | Destination directory (can be repeated for multiple targets) | Prompted if omitted |
+| `-r` | `N` | Maximum retry attempts per directory | `10` |
+| `-w` | `SEC` | Wait interval between retries in seconds | `10` |
+| `-h` | None | Display usage information | None |
+
+#### Example
+
+```bash
+bash mega-tor-downloader.sh \
+  -u "https://mega.nz/folder/example#key" \
+  -d "/mnt/storage/downloads" \
+  -r 15 \
+  -w 20
+```
+
+---
+
+### repo-clone.bat
+
+A Windows command script designed to mirror the file tree of a source Git repository to a target Git repository while preserving the target repository's Git history.
+
+#### Workflow
+
+1. Clones the source repository into a temporary workspace (`src_temp`).
+2. Clones the destination repository into a separate temporary workspace (`dest_temp`).
+3. Executes `robocopy src_temp dest_temp /MIR /XD .git` to mirror all source files into the destination while leaving destination Git configuration untouched.
+4. Stages updated files (`git add .`), creates a commit with a user-supplied message, and pushes to remote `HEAD`.
+5. Cleans up temporary staging directories upon exit.
+
+#### Usage
+
+Double-click `repo-clone.bat` or run from Command Prompt:
+
+```cmd
+repo-clone.bat
+```
+
+Prompts for:
+1. Source repository URL (accepts formats with or without `https://`).
+2. Destination repository URL.
+3. Commit message for the synchronized state.
+
+---
+
+## Technical Architecture
+
+### Two-Pass Deduplication
+
+Both `advaita.py` and `adwaita-telegram.py` avoid `O(n^2)` pairwise comparisons by using a two-pass indexing approach:
+
+1. **Pass 1 (Filesystem Metadata Filter)**: Gathers file size metadata across all indexed paths in `O(n)` time. Files with unique sizes are filtered out immediately.
+2. **Pass 2 (Cryptographic Hash Verification)**: Computes SHA-256 hashes in 64 KB streaming chunks only for files with identical byte sizes, eliminating false positives from collisions or identical sizes.
+
+```text
+Filesystem Scan
+      │
+      ▼
+Group by Size (O(n))
+      │
+      ├─ Single File Size ────► Unique (Skipped)
+      │
+      └─ Multiple File Size Match (Candidates)
+            │
+            ▼
+      Compute SHA-256
+            │
+            ├─ Distinct Hashes ──► Different Content
+            │
+            └─ Matching Hashes ──► Duplicate Confirmed
+```
+
+### Bandwidth-Optimized Partial Hashing
+
+In `adwaita-telegram.py`, downloading multi-gigabyte files across the Telegram MTProto API solely to compare checksums is inefficient. The script implements an adaptive strategy:
+
+- **Files <= 10 MB**: Downloaded locally and hashed with standard SHA-256.
+- **Files > 10 MB**: Fetches only the initial 1 MB data chunk via `client.iter_download(media, request_size=1048576)`. The partial SHA-256 checksum combined with the exact byte size provides duplicate detection while consuming less than 1% of the bandwidth required for full downloads.
+
+### Tor IP Rotation Mechanism
+
+`mega-tor-downloader.sh` handles cloud storage rate-limiting:
+
+1. Initiates transfer using `torsocks megadl`.
+2. Inspects process exit codes:
+   - `0`: Successful transfer.
+   - Non-zero: Quota limit or connection error.
+3. If an error is detected, the script logs the failure, restarts the Tor system service (`sudo systemctl restart tor`), pauses for `RETRY_DELAY` seconds to establish a new circuit and exit IP, and resumes the transfer.
+4. Completed target directories are tracked in memory, ensuring successful downloads are never re-downloaded during retries.
+
+---
+
+## Environment and Security
+
+- **Credential Isolation**: Telegram API credentials (`API_ID`, `API_HASH`) and session tokens (`*.session`) must remain private. Ensure they are stored exclusively in `.env` files.
+- **Git Hygiene**: The repository includes a `.gitignore` configured to prevent committing generated files, including:
+  - Python bytecode (`__pycache__/`, `*.pyc`)
+  - Telegram session state (`*.session`, `progress_cache.json`)
+  - Download artifacts (`*_media/`, `duplicates/`)
+  - Operating system metadata (`.DS_Store`, `Thumbs.db`)
